@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Ultimate Compression Fixed)</title>
+    <title>3D Mesh Simplifier (Safe Compression)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -73,7 +73,7 @@
 
     <div id="ui-panel">
         <h2>Mesh Simplifier Pro</h2>
-        <p class="subtitle">MAX Compression (Fixed)</p>
+        <p class="subtitle">Safe MAX Compression (Universal)</p>
 
         <!-- Upload & Demo -->
         <div class="section">
@@ -130,10 +130,10 @@
                 <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
             </div>
             
-            <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Super Compressed):</label>
+            <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Optimized):</label>
             <div class="btn-group">
                 <button id="exportObjBtn" class="success">💾 Raw .OBJ</button>
-                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 MAX .GLB</button>
+                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Safe .GLB</button>
             </div>
         </div>
     </div>
@@ -147,8 +147,7 @@
                 "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
-                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
-                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.20.0/meshopt_encoder.module.js"
+                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1"
             }
         }
     </script>
@@ -164,11 +163,10 @@
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
         
-        // --- glTF-Transform & Meshopt Imports ---
+        // --- glTF-Transform Imports (Tanpa Meshopt) ---
         import { WebIO } from '@gltf-transform/core';
-        import { KHRONOS_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
-        import { weld, quantize, dedup, prune, reorder } from '@gltf-transform/functions';
-        import { MeshoptEncoder } from 'meshoptimizer';
+        import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
+        import { weld, quantize, dedup, prune } from '@gltf-transform/functions';
 
         let scene, camera, renderer, controls, transformControl;
         let currentMesh = null; let originalGeometry = null; 
@@ -339,10 +337,10 @@
                 if (!currentMesh) return; const exporter = new OBJExporter(); downloadFile(exporter.parse(currentMesh), 'text/plain', `raw_${slider.value}percent.obj`);
             });
 
-            // --- EKSPOR DENGAN TEKSTUR RESIZER DAN MESHOPT (FIXED) ---
+            // --- EKSPOR DENGAN "SAFE" COMPRESSION (UNIVERSAL) ---
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
-                showLoading("MAX Compression berjalan (Tunggu sebentar)...");
+                showLoading("Menyiapkan Kompresi Aman...");
                 
                 const prevMode = toolView.className === 'active-tool' ? 'view' : transformControl.mode;
                 transformControl.detach(); 
@@ -354,45 +352,27 @@
                     scene, 
                     async function (gltfArrayBuffer) {
                         try {
-                            // Tunggu Meshopt Encoder (WASM) Siap
-                            await MeshoptEncoder.ready;
-
-                            // 1. Inisiasi WebIO dengan ekstensi Meshopt
-                            const io = new WebIO().registerExtensions([
-                                ...KHRONOS_EXTENSIONS,
-                                EXTMeshoptCompression
-                            ]);
-                            
-                            // PERBAIKAN UTAMA: Daftarkan encoder ke sistem IO agar bisa menulis file
-                            io.registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
-                            
+                            const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                             const document = await io.readBinary(new Uint8Array(gltfArrayBuffer));
                             
-                            // 2. Terapkan algoritma kompresi super ketat
+                            // Transformasi aman: Tanpa Meshopt, hanya membersihkan & merampingkan data
                             await document.transform(
                                 prune(),     
                                 dedup(),     
                                 weld({ tolerance: 0.0001 }), 
-                                reorder({ encoder: MeshoptEncoder }),
                                 quantize({
-                                    quantizePosition: 12, 
-                                    quantizeTexcoord: 10,
+                                    quantizePosition: 14, // Presisi aman
+                                    quantizeTexcoord: 12,
                                     quantizeColor: 8,
                                     quantizeNormal: 8
                                 })
                             );
-                            
-                            // 3. Aktifkan Ekstensi Meshopt pada Output GLB
-                            document.createExtension(EXTMeshoptCompression)
-                                .setRequired(true)
-                                .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.FILTER });
 
                             const compressedGlbBuffer = await io.writeBinary(document);
                             
-                            downloadFile(compressedGlbBuffer, 'application/octet-stream', `MAX_${slider.value}percent.glb`);
+                            downloadFile(compressedGlbBuffer, 'application/octet-stream', `Safe_${slider.value}percent.glb`);
                         } catch (error) {
                             console.error("Kompresi Gagal:", error); 
-                            // Menampilkan detail error jika terjadi lagi
                             alert("Gagal melakukan kompresi data: " + error.message); 
                         } finally {
                             currentMesh.material = tempMaterial;
@@ -404,6 +384,7 @@
                         currentMesh.material = tempMaterial; if (prevMode !== 'view') transformControl.attach(currentMesh);
                         console.error(error); alert("Gagal mengekspor GLB mentah."); hideLoading();
                     },
+                    // KUNCI: Tetap me-limit ukuran tekstur untuk menghemat belasan Megabyte
                     { binary: true, maxTextureSize: 1024 } 
                 );
             });
