@@ -2,108 +2,177 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <!-- Mencegah layar web ikut ter-zoom saat merotasi kamera 3D di HP -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Mesh Simplifier (Responsive)</title>
+    <title>3D Mesh Simplifier (Spatial UI & Multi-Language)</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
-        body { overflow: hidden; background-color: #121214; color: #e4e4e7; touch-action: none; /* Mencegah pull-to-refresh di HP */ }
-        #canvas-container { width: 100vw; height: 100vh; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        :root {
+            --glass-bg: rgba(20, 20, 25, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 0, 0, 0.2);
+            
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.15);
+            --btn-border: rgba(255, 255, 255, 0.08);
+            
+            --accent-glow: 0 0 20px rgba(56, 189, 248, 0.4);
+            --accent-bg: rgba(56, 189, 248, 0.15);
+            --accent-border: rgba(56, 189, 248, 0.5);
+            --accent-text: #7dd3fc;
+            
+            --success-glow: 0 0 20px rgba(16, 185, 129, 0.3);
+            --success-bg: rgba(16, 185, 129, 0.15);
+            --success-border: rgba(16, 185, 129, 0.5);
+            --success-text: #6ee7b7;
+
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        body { overflow: hidden; background-color: #050507; color: var(--text-main); touch-action: none; }
         
-        /* Base Panel Style (Desktop & Tablet) */
+        body::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.8) 150%);
+            pointer-events: none; z-index: 1;
+        }
+
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; z-index: 0; }
+        
+        /* --- SPATIAL PANEL BASE --- */
         #ui-panel {
-            position: absolute; top: 20px; left: 20px; width: 340px;
-            background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); z-index: 10;
-            display: flex; flex-direction: column; max-height: 90vh;
-            transition: all 0.3s ease;
+            position: absolute; top: 24px; left: 24px; width: 360px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px) saturate(150%);
+            -webkit-backdrop-filter: blur(30px) saturate(150%);
+            border: 1px solid var(--glass-border);
+            border-radius: 28px;
+            box-shadow: var(--glass-shadow), var(--glass-highlight);
+            z-index: 10; display: flex; flex-direction: column; max-height: calc(100vh - 48px);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         
-        /* Header Panel dengan tombol Minimize */
         .panel-header {
             display: flex; justify-content: space-between; align-items: flex-start;
-            padding: 20px 20px 10px 20px;
+            padding: 24px 24px 12px 24px;
         }
-        #toggleUiBtn {
-            background: transparent; border: none; color: #a1a1aa; font-size: 1.2rem;
-            cursor: pointer; padding: 0 5px; margin-top: -5px;
-        }
-        #toggleUiBtn:hover { color: #fff; background: transparent; border: none; }
 
-        #ui-content { padding: 0 20px 20px 20px; overflow-y: auto; flex: 1; }
+        .header-controls {
+            display: flex; gap: 8px;
+        }
+        
+        .icon-btn {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); 
+            color: var(--text-muted); font-size: 0.8rem; width: 32px; height: 32px;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s ease; font-weight: 600; padding: 0;
+        }
+        .icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; transform: scale(1.05); }
+
+        #ui-content { padding: 0 24px 24px 24px; overflow-y: auto; flex: 1; }
         
         /* Custom Scrollbar */
-        #ui-content::-webkit-scrollbar { width: 6px; }
-        #ui-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-        #ui-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        #ui-content::-webkit-scrollbar { width: 4px; }
+        #ui-content::-webkit-scrollbar-track { background: transparent; }
+        #ui-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0); border-radius: 10px; transition: background 0.3s; }
+        #ui-content:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
 
-        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 4px; color: #f4f4f5; }
-        p.subtitle { font-size: 0.8rem; color: #38bdf8; margin-bottom: 5px; }
-        .section { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+        h2 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 4px; }
+        p.subtitle { font-size: 0.75rem; color: var(--accent-text); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 5px; }
+        
+        .section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-        label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: #d4d4d8; }
-        .slider-val { color: #38bdf8; font-weight: 600; }
-        input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: #27272a; outline: none; accent-color: #38bdf8; cursor: pointer; }
         
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-        .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
-        .btn-group-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; margin-top: 10px; }
-        .header-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        label { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 500; margin-bottom: 10px; color: var(--text-muted); }
+        .slider-val { color: var(--accent-text); font-weight: 600; }
         
-        button, label.file-btn {
-            display: flex; align-items: center; justify-content: center; padding: 9px 8px;
-            background: #27272a; color: #f4f4f5; border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-align: center;
+        /* SPATIAL SLIDER */
+        input[type="range"] { 
+            -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; 
+            background: rgba(255,255,255,0.1); outline: none; cursor: pointer; 
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
         }
-        button:hover:not(:disabled), label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+            background: #fff; box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+            border: 2px solid var(--accent-text); transition: transform 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
         
-        button.primary { background: #0284c7; border-color: #0369a1; font-size: 0.825rem; }
-        button.primary:hover:not(:disabled) { background: #0369a1; }
-        button.success { background: #059669; border-color: #047857; font-size: 0.825rem; }
-        button.success:hover:not(:disabled) { background: #047857; }
-        button.active-tool { background: #0ea5e9; border-color: #0284c7; color: white; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+        .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+        .btn-group-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+        .header-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        
+        /* --- SPATIAL BUTTONS --- */
+        button, label.file-btn {
+            display: flex; align-items: center; justify-content: center; padding: 10px 12px;
+            background: var(--btn-bg); color: var(--text-main); 
+            border: 1px solid var(--btn-border); border-radius: 16px; 
+            font-size: 0.75rem; font-weight: 500; letter-spacing: 0.3px; cursor: pointer; 
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        button:hover:not(:disabled), label.file-btn:hover { 
+            background: var(--btn-hover); border-color: rgba(255,255,255,0.2); 
+            transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        button:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        button.active-tool, button.active-toggle {
+            background: var(--accent-bg); border-color: var(--accent-border); 
+            color: var(--accent-text); box-shadow: var(--accent-glow); font-weight: 600;
+        }
+        
+        button.primary { background: var(--text-main); color: #000; font-weight: 600; border: none; }
+        button.primary:hover:not(:disabled) { background: #fff; box-shadow: 0 0 20px rgba(255,255,255,0.4); }
+        
+        button.success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+        button.success:hover:not(:disabled) { box-shadow: var(--success-glow); background: rgba(16, 185, 129, 0.25); }
+
+        #undoBtn { border-radius: 20px; padding: 4px 12px; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        #undoBtn:hover:not(:disabled) { background: rgba(239, 68, 68, 0.2); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
 
         input[type="file"] { display: none; }
-        .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
-        .stats-row { display: flex; justify-content: space-between; }
-        .stats-val { font-family: monospace; font-weight: 600; color: #38bdf8; }
         
+        /* Stats Box */
+        .stats-box { 
+            background: rgba(0, 0, 0, 0.4); border-radius: 16px; padding: 14px 16px; 
+            font-size: 0.75rem; line-height: 1.8; border: 1px solid rgba(255,255,255,0.03);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .stats-row { display: flex; justify-content: space-between; color: var(--text-muted); }
+        .stats-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--text-main); }
+        .stats-val.highlight { color: var(--accent-text); text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+        
+        /* Floating HUD Loading */
         #loading-overlay {
-            position: absolute; top: 20px; right: 20px; background: rgba(24, 24, 27, 0.9);
-            border: 1px solid #0284c7; color: #38bdf8; padding: 8px 16px; border-radius: 20px;
-            font-size: 0.8rem; font-weight: 500; display: none; align-items: center; gap: 8px; z-index: 20;
+            position: absolute; top: 24px; right: 24px; 
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border: 1px solid var(--accent-border); color: var(--accent-text); 
+            padding: 10px 20px; border-radius: 30px; font-size: 0.8rem; font-weight: 500; 
+            display: none; align-items: center; gap: 12px; z-index: 20;
+            box-shadow: var(--accent-glow), var(--glass-shadow);
         }
         .spinner {
-            width: 12px; height: 12px; border: 2px solid #38bdf8; border-top-color: transparent;
+            width: 14px; height: 14px; border: 2px solid rgba(56, 189, 248, 0.3); border-top-color: var(--accent-text);
             border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ==================================================
-           MEDIA QUERIES (RESPONSIVE KHUSUS SMARTPHONE) 
-           ================================================== */
         @media (max-width: 768px) {
             #ui-panel {
-                top: auto; 
-                bottom: 0; 
-                left: 0; 
-                width: 100vw; 
-                max-height: 55vh; /* Menyisakan 45% layar atas untuk model 3D */
-                border-radius: 20px 20px 0 0; /* Sudut melengkung hanya di atas */
-                border-left: none; border-right: none; border-bottom: none;
+                top: auto; bottom: 16px; left: 16px; width: calc(100vw - 32px); 
+                max-height: 55vh; border-radius: 32px;
             }
-            .panel-header { padding: 15px 15px 10px 15px; }
-            #ui-content { padding: 0 15px 15px 15px; }
-            
-            /* Pada layar sempit, tumpuk tombol transformasi menjadi 2 baris x 2 kolom */
-            .btn-group-4 { grid-template-columns: 1fr 1fr; gap: 6px; }
-            
-            #loading-overlay {
-                top: auto; bottom: 60vh; right: 50%; transform: translateX(50%);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            }
+            .panel-header { padding: 20px 20px 10px 20px; }
+            #ui-content { padding: 0 20px 20px 20px; }
+            .btn-group-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
+            #loading-overlay { top: 24px; right: 50%; transform: translateX(50%); }
         }
     </style>
 </head>
@@ -117,72 +186,76 @@
     <div id="ui-panel">
         <div class="panel-header">
             <div>
-                <h2>Mesh Simplifier Pro</h2>
-                <p class="subtitle">Responsive & Safe Compression</p>
+                <h2>Mesh Simplifier</h2>
+                <p class="subtitle" data-i18n="subtitle">Spatial Edition • Safe Compression</p>
             </div>
-            <button id="toggleUiBtn" title="Minimize/Maximize UI">▼</button>
+            <div class="header-controls">
+                <button id="langToggleBtn" class="icon-btn" title="Switch Language">ID</button>
+                <button id="toggleUiBtn" class="icon-btn" title="Minimize/Maximize UI">▼</button>
+            </div>
         </div>
 
         <div id="ui-content">
             <!-- Upload & Demo -->
             <div class="section">
                 <div class="btn-group" style="grid-template-columns: 1fr;">
-                    <label class="file-btn" style="font-size: 0.825rem;">
-                        📁 Upload Model (.OBJ, .GLB, .FBX)
+                    <label class="file-btn" style="font-size: 0.85rem;" data-i18n="import">
+                        <span style="margin-right:8px; font-size:1.1rem;">+</span> Import Model 3D (.OBJ, .GLB, .FBX)
                         <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
                     </label>
-                    <button id="resetDemoBtn" style="font-size: 0.825rem;">🔄 Load Sample Demo</button>
+                    <button id="resetDemoBtn" data-i18n="loadDemo">Load Sample Model</button>
                 </div>
             </div>
 
             <!-- Transform Controls -->
             <div class="section">
                 <div class="header-group">
-                    <label style="margin: 0;">Alat Transformasi</label>
-                    <button id="undoBtn" style="padding: 4px 8px; background: #b91c1c; border-color: #991b1b;" disabled>↩ Undo</button>
+                    <label style="margin: 0;" data-i18n="manipulation">Manipulasi Ruang</label>
+                    <button id="undoBtn" disabled data-i18n="undo">↩ Undo</button>
                 </div>
                 <div class="btn-group-4">
-                    <button id="toolView" class="active-tool" title="View Only">View</button>
-                    <button id="toolMove" title="Geser Objek">Geser</button>
-                    <button id="toolRotate" title="Putar Objek">Putar</button>
-                    <button id="toolScale" title="Ubah Skala">Skala</button>
+                    <button id="toolView" class="active-tool" title="Orbit Camera" data-i18n="view">View</button>
+                    <button id="toolMove" title="Move Object" data-i18n="move">Move</button>
+                    <button id="toolRotate" title="Rotate Object" data-i18n="rotate">Rotate</button>
+                    <button id="toolScale" title="Scale Object" data-i18n="scale">Scale</button>
                 </div>
             </div>
 
             <!-- Percentage -->
             <div class="section">
                 <label>
-                    <span>Pengurangan Polygon</span>
+                    <span data-i18n="targetPoly">Target Poligon</span>
                     <span class="slider-val" id="percentDisplay">50%</span>
                 </label>
                 <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
                 <div class="btn-group">
-                    <button id="applyBtn" class="primary">Terapkan</button>
-                    <button id="resetMeshBtn">Reset ke Asli</button>
+                    <button id="applyBtn" class="primary" data-i18n="applyBtn">Terapkan Reduksi</button>
+                    <button id="resetMeshBtn" data-i18n="resetMesh">Reset Mesh</button>
                 </div>
             </div>
 
             <!-- View Settings -->
             <div class="section">
+                <label data-i18n="viewMode">Mode Tampilan</label>
                 <div class="btn-group-3">
-                    <button id="textureBtn" data-active="true" style="background: #0284c7;">Tekstur</button>
-                    <button id="wireframeBtn" data-active="false">Wireframe</button>
-                    <button id="shadingBtn" data-active="false">Smooth</button>
+                    <button id="textureBtn" class="active-toggle" data-i18n="material">Material</button>
+                    <button id="wireframeBtn" data-i18n="wireframe">Wireframe</button>
+                    <button id="shadingBtn" data-i18n="smooth">Smooth</button>
                 </div>
             </div>
 
             <!-- Stats & Export -->
             <div class="section">
                 <div class="stats-box">
-                    <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
-                    <div class="stats-row"><span>Vertex Hasil:</span><span class="stats-val" id="currVerts">0</span></div>
-                    <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
+                    <div class="stats-row"><span data-i18n="origGeo">Geometri Asli</span><span class="stats-val" id="origVerts">0</span></div>
+                    <div class="stats-row"><span data-i18n="currGeo">Geometri Saat Ini</span><span class="stats-val" id="currVerts">0</span></div>
+                    <div class="stats-row"><span data-i18n="reduction">Reduksi</span><span class="stats-val highlight" id="reducedPct">0%</span></div>
                 </div>
                 
-                <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Optimized):</label>
+                <label style="margin-top: 16px; margin-bottom: 4px;" data-i18n="exportLabel">Ekspor (Web-Optimized)</label>
                 <div class="btn-group">
-                    <button id="exportObjBtn" class="success">💾 Raw .OBJ</button>
-                    <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Safe .GLB</button>
+                    <button id="exportObjBtn">💾 .OBJ</button>
+                    <button id="exportGlbBtn" class="success">📦 .GLB</button>
                 </div>
             </div>
         </div>
@@ -217,6 +290,50 @@
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
         import { weld, quantize, dedup, prune } from '@gltf-transform/functions';
 
+        // --- i18n DICTIONARY ---
+        const i18n = {
+            id: {
+                subtitle: "Spatial Edition • Safe Compression",
+                import: '<span style="margin-right:8px; font-size:1.1rem;">+</span> Import Model 3D (.OBJ, .GLB, .FBX)',
+                loadDemo: "Load Sample Model",
+                manipulation: "Manipulasi Ruang",
+                undo: "↩ Undo",
+                view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
+                targetPoly: "Target Poligon", applyBtn: "Terapkan Reduksi", resetMesh: "Reset Mesh",
+                viewMode: "Mode Tampilan", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
+                origGeo: "Geometri Asli", currGeo: "Geometri Saat Ini", reduction: "Reduksi",
+                exportLabel: "Ekspor (Web-Optimized)",
+                loadingMesh: "Memproses Spatial Mesh...",
+                loadingSimplify: "Menyederhanakan",
+                loadingExport: "Mengekspor Spatial Asset...",
+                alertError: "Gagal memproses.",
+                alertNoMesh: "Tidak ditemukan Mesh 3D.",
+                alertFailFile: "Gagal membaca file!",
+                alertFailExport: "Gagal mengekspor data."
+            },
+            en: {
+                subtitle: "Spatial Edition • Safe Compression",
+                import: '<span style="margin-right:8px; font-size:1.1rem;">+</span> Import 3D Model (.OBJ, .GLB, .FBX)',
+                loadDemo: "Load Sample Model",
+                manipulation: "Spatial Manipulation",
+                undo: "↩ Undo",
+                view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
+                targetPoly: "Target Polygons", applyBtn: "Apply Reduction", resetMesh: "Reset Mesh",
+                viewMode: "View Mode", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
+                origGeo: "Original Geometry", currGeo: "Current Geometry", reduction: "Reduction",
+                exportLabel: "Export (Web-Optimized)",
+                loadingMesh: "Processing Spatial Mesh...",
+                loadingSimplify: "Simplifying",
+                loadingExport: "Exporting Spatial Asset...",
+                alertError: "Failed to process.",
+                alertNoMesh: "No 3D Mesh found.",
+                alertFailFile: "Failed to read file!",
+                alertFailExport: "Failed to export data."
+            }
+        };
+
+        let currentLang = 'id';
+
         let scene, camera, renderer, controls, transformControl;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
@@ -237,9 +354,11 @@
         const exportObjBtn = document.getElementById('exportObjBtn'); const exportGlbBtn = document.getElementById('exportGlbBtn');
         const loadingOverlay = document.getElementById('loading-overlay'); const loadingText = document.getElementById('loading-text');
 
-        // Fitur Minimize/Maximize UI Panel
+        // Minimize UI & Language Toggle
         const toggleUiBtn = document.getElementById('toggleUiBtn');
+        const langToggleBtn = document.getElementById('langToggleBtn');
         const uiContent = document.getElementById('ui-content');
+        
         let isUiExpanded = true;
         toggleUiBtn.addEventListener('click', () => {
             isUiExpanded = !isUiExpanded;
@@ -247,15 +366,37 @@
             toggleUiBtn.innerText = isUiExpanded ? '▼' : '▲';
         });
 
+        langToggleBtn.addEventListener('click', () => {
+            currentLang = currentLang === 'id' ? 'en' : 'id';
+            langToggleBtn.innerText = currentLang.toUpperCase();
+            
+            // Update all static texts
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                // Use innerHTML to preserve the <span> tag in the import button
+                if(i18n[currentLang][key]) {
+                    el.innerHTML = i18n[currentLang][key];
+                }
+            });
+            // Update undo text manually if there's history
+            updateUndoUI();
+        });
+
         function init() {
             const container = document.getElementById('canvas-container');
-            scene = new THREE.Scene(); scene.background = new THREE.Color(0x121214);
+            scene = new THREE.Scene(); 
+            scene.background = null; 
+            
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000); camera.position.set(0, 2, 5);
-            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.outputColorSpace = THREE.SRGBColorSpace; 
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
+            renderer.outputColorSpace = THREE.SRGBColorSpace; 
             container.appendChild(renderer.domElement);
             
-            controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls = new OrbitControls(camera, renderer.domElement); 
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
 
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.addEventListener('dragging-changed', function (event) {
@@ -268,10 +409,13 @@
             });
             scene.add(transformControl);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5); dirLight1.position.set(5, 10, 7); scene.add(dirLight1);
-            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
-            const grid = new THREE.GridHelper(10, 20, 0x3f3f46, 0x27272a); grid.position.y = -1.2; scene.add(grid);
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.0); dirLight1.position.set(5, 10, 7); scene.add(dirLight1);
+            const dirLight2 = new THREE.DirectionalLight(0x7dd3fc, 1.5); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
+            
+            const grid = new THREE.GridHelper(20, 40, 0xffffff, 0xffffff); 
+            grid.material.opacity = 0.05; grid.material.transparent = true;
+            grid.position.y = -1.2; scene.add(grid);
 
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
         }
@@ -295,11 +439,15 @@
             updateUndoUI();
         }
 
-        function updateUndoUI() { undoBtn.disabled = historyStack.length === 0; }
+        function updateUndoUI() { 
+            undoBtn.disabled = historyStack.length === 0; 
+            undoBtn.innerText = historyStack.length > 0 ? `↩ Undo (${historyStack.length})` : i18n[currentLang].undo;
+        }
+        
         function clearHistory() { historyStack.forEach(state => { if (state.type === 'mesh') state.geometry.dispose(); }); historyStack.length = 0; updateUndoUI(); }
 
         function setMesh(geometry, sourceMaterial = null) {
-            showLoading("Menyiapkan mesh...");
+            showLoading(i18n[currentLang].loadingMesh);
             setTimeout(() => {
                 clearHistory(); 
                 if (currentMesh) { transformControl.detach(); scene.remove(currentMesh); currentMesh.geometry.dispose(); }
@@ -310,7 +458,7 @@
                 originalGeometry = geometry.clone(); loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
                 currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
-                if (transformControl.mode !== '' && toolView.className !== 'active-tool') transformControl.attach(currentMesh);
+                if (transformControl.mode !== '' && toolView.className.includes('active-tool')) transformControl.attach(currentMesh);
                 
                 applyCurrentMaterialStates(); updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count); hideLoading();
             }, 50);
@@ -318,7 +466,8 @@
 
         function applyCurrentMaterialStates() {
             if (!currentMesh) return;
-            const isWireframe = wireframeBtn.dataset.active === 'true'; const isSmooth = shadingBtn.dataset.active === 'true';
+            const isWireframe = wireframeBtn.classList.contains('active-toggle'); 
+            const isSmooth = shadingBtn.classList.contains('active-toggle');
             const applyState = (mat) => { mat.wireframe = isWireframe; mat.flatShading = isSmooth; mat.needsUpdate = true; };
             if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState); else applyState(currentMesh.material);
         }
@@ -329,7 +478,7 @@
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
-            showLoading(`Menyederhanakan (${reductionPercent}%)...`);
+            showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`);
             setTimeout(() => {
                 try {
                     const origVertCount = originalGeometry.attributes.position.count;
@@ -337,7 +486,7 @@
                     const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
                     currentMesh.geometry.dispose(); currentMesh.geometry = simplifiedGeo; currentMesh.geometry.computeVertexNormals();
                     updateStats(origVertCount, simplifiedGeo.attributes.position.count);
-                } catch (err) { console.error(err); alert("Gagal memproses."); } finally { hideLoading(); }
+                } catch (err) { console.error(err); alert(i18n[currentLang].alertError); } finally { hideLoading(); }
             }, 60);
         }
 
@@ -362,31 +511,31 @@
             toolScale.addEventListener('click', () => { resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale'); if (currentMesh) transformControl.attach(currentMesh); });
 
             textureBtn.addEventListener('click', () => {
-                if (!currentMesh) return; isTextureOn = !isTextureOn; textureBtn.dataset.active = isTextureOn;
-                textureBtn.style.background = isTextureOn ? '#0284c7' : '#27272a';
+                if (!currentMesh) return; 
+                isTextureOn = !isTextureOn; 
+                textureBtn.classList.toggle('active-toggle', isTextureOn);
                 currentMesh.material = isTextureOn ? loadedMaterial : defaultMaterial; applyCurrentMaterialStates(); 
             });
             wireframeBtn.addEventListener('click', () => {
-                wireframeBtn.dataset.active = wireframeBtn.dataset.active !== 'true';
-                wireframeBtn.style.background = wireframeBtn.dataset.active === 'true' ? '#0284c7' : '#27272a'; applyCurrentMaterialStates();
+                wireframeBtn.classList.toggle('active-toggle'); applyCurrentMaterialStates();
             });
             shadingBtn.addEventListener('click', () => {
-                shadingBtn.dataset.active = shadingBtn.dataset.active !== 'true';
-                shadingBtn.style.background = shadingBtn.dataset.active === 'true' ? '#0284c7' : '#27272a'; applyCurrentMaterialStates();
+                shadingBtn.classList.toggle('active-toggle'); applyCurrentMaterialStates();
             });
 
             fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0]; if (!file) return; showLoading("Membaca file " + file.name + "...");
+                const file = e.target.files[0]; if (!file) return; 
+                showLoading(`${i18n[currentLang].loadingMesh}`);
                 const fileURL = URL.createObjectURL(file);
                 const extractAndSetMesh = (object) => {
                     let foundMesh = null; const root = object.scene || object;
                     root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
-                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material); else alert("Tidak ditemukan Mesh 3D.");
+                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material); else alert(i18n[currentLang].alertNoMesh);
                     hideLoading(); URL.revokeObjectURL(fileURL);
                 };
-                if (file.name.toLowerCase().endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
-                else if (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf')) new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
-                else if (file.name.toLowerCase().endsWith('.fbx')) new FBXLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
+                if (file.name.toLowerCase().endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert(i18n[currentLang].alertFailFile); hideLoading(); });
+                else if (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf')) new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert(i18n[currentLang].alertFailFile); hideLoading(); });
+                else if (file.name.toLowerCase().endsWith('.fbx')) new FBXLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert(i18n[currentLang].alertFailFile); hideLoading(); });
                 e.target.value = '';
             });
 
@@ -398,9 +547,9 @@
 
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
-                showLoading("Menyiapkan Kompresi Aman...");
+                showLoading(i18n[currentLang].loadingExport);
                 
-                const prevMode = toolView.className === 'active-tool' ? 'view' : transformControl.mode;
+                const prevMode = toolView.className.includes('active-tool') ? 'view' : transformControl.mode;
                 transformControl.detach(); 
                 const tempMaterial = currentMesh.material;
                 currentMesh.material = loadedMaterial; 
@@ -426,11 +575,10 @@
                             );
 
                             const compressedGlbBuffer = await io.writeBinary(document);
-                            
-                            downloadFile(compressedGlbBuffer, 'application/octet-stream', `Safe_${slider.value}percent.glb`);
+                            downloadFile(compressedGlbBuffer, 'application/octet-stream', `Spatial_${slider.value}percent.glb`);
                         } catch (error) {
                             console.error("Kompresi Gagal:", error); 
-                            alert("Gagal melakukan kompresi data: " + error.message); 
+                            alert(`${i18n[currentLang].alertFailExport} ` + error.message); 
                         } finally {
                             currentMesh.material = tempMaterial;
                             if (prevMode !== 'view') transformControl.attach(currentMesh);
@@ -439,7 +587,7 @@
                     },
                     function (error) {
                         currentMesh.material = tempMaterial; if (prevMode !== 'view') transformControl.attach(currentMesh);
-                        console.error(error); alert("Gagal mengekspor GLB mentah."); hideLoading();
+                        console.error(error); alert(i18n[currentLang].alertFailExport); hideLoading();
                     },
                     { binary: true, maxTextureSize: 1024 } 
                 );
