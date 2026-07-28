@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Multi-format & Export)</title>
+    <title>3D Mesh Simplifier (Textures & Multi-format)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -21,16 +21,20 @@
         label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: #d4d4d8; }
         .slider-val { color: #38bdf8; font-weight: 600; }
         input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: #27272a; outline: none; accent-color: #38bdf8; cursor: pointer; }
+        
+        /* Grid diperbarui jadi 3 kolom untuk muat 3 tombol toggle */
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+        
         button, label.file-btn {
-            display: flex; align-items: center; justify-content: center; padding: 9px 12px;
+            display: flex; align-items: center; justify-content: center; padding: 9px 8px;
             background: #27272a; color: #f4f4f5; border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px; font-size: 0.825rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease; text-align: center;
+            border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-align: center;
         }
         button:hover, label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
-        button.primary { background: #0284c7; border-color: #0369a1; }
+        button.primary { background: #0284c7; border-color: #0369a1; font-size: 0.825rem; }
         button.primary:hover { background: #0369a1; }
-        button.success { background: #059669; border-color: #047857; }
+        button.success { background: #059669; border-color: #047857; font-size: 0.825rem; }
         button.success:hover { background: #047857; }
         input[type="file"] { display: none; }
         .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
@@ -57,42 +61,39 @@
 
     <div id="ui-panel">
         <h2>Mesh Simplifier</h2>
-        <p class="subtitle">Upload OBJ/GLB/FBX. Export ke OBJ/GLB.</p>
+        <p class="subtitle">Support Tekstur (Gunakan .GLB / .FBX)</p>
 
-        <!-- Section 1: Upload / Demo -->
         <div class="section">
             <div class="btn-group" style="grid-template-columns: 1fr;">
-                <label class="file-btn">
+                <label class="file-btn" style="font-size: 0.825rem;">
                     📁 Upload Model 3D
                     <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
                 </label>
-                <button id="resetDemoBtn">🔄 Load Sample Demo Mesh</button>
+                <button id="resetDemoBtn" style="font-size: 0.825rem;">🔄 Load Sample Demo</button>
             </div>
         </div>
 
-        <!-- Section 2: Percentage Control -->
         <div class="section">
             <label>
                 <span>Pengurangan Polygon</span>
                 <span class="slider-val" id="percentDisplay">50%</span>
             </label>
             <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
-            
             <div class="btn-group">
                 <button id="applyBtn" class="primary">Terapkan</button>
                 <button id="resetMeshBtn">Reset ke Asli</button>
             </div>
         </div>
 
-        <!-- Section 3: View Toggles -->
         <div class="section">
-            <div class="btn-group">
-                <button id="wireframeBtn">Toggle Wireframe</button>
-                <button id="shadingBtn">Flat / Smooth</button>
+            <!-- TIGA TOMBOL TOGGLE -->
+            <div class="btn-group-3">
+                <button id="textureBtn" data-active="true" style="background: #0284c7;">Tekstur</button>
+                <button id="wireframeBtn" data-active="false">Wireframe</button>
+                <button id="shadingBtn" data-active="false">Smooth</button>
             </div>
         </div>
 
-        <!-- Section 4: Statistics & Export -->
         <div class="section">
             <div class="stats-box">
                 <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
@@ -102,8 +103,8 @@
             
             <label style="margin-top: 12px; margin-bottom: 4px;">Simpan Hasil:</label>
             <div class="btn-group">
-                <button id="exportObjBtn" class="success">💾 Export .OBJ</button>
-                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Export .GLB</button>
+                <button id="exportObjBtn" class="success">💾 .OBJ</button>
+                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 .GLB</button>
             </div>
         </div>
     </div>
@@ -126,34 +127,35 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
-        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'; // TAMBAHAN EXPORTER GLTF
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 
-        // --- App State ---
         let scene, camera, renderer, controls;
         let currentMesh = null;
         let originalGeometry = null; 
+        
+        let loadedMaterial = null; // Menyimpan material asli dari file
+        let isTextureOn = true;    // Status toggle tekstur
         const modifier = new SimplifyModifier();
 
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x38bdf8,
-            wireframe: false,
-            roughness: 0.4,
-            metalness: 0.1,
-            side: THREE.DoubleSide,
-            flatShading: false
+        // Material Default (Mode Polos / Clay)
+        const defaultMaterial = new THREE.MeshStandardMaterial({
+            color: 0x88ccff, wireframe: false, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide
         });
 
         const slider = document.getElementById('reductionSlider');
         const percentDisplay = document.getElementById('percentDisplay');
         const applyBtn = document.getElementById('applyBtn');
         const resetMeshBtn = document.getElementById('resetMeshBtn');
+        
+        const textureBtn = document.getElementById('textureBtn');
         const wireframeBtn = document.getElementById('wireframeBtn');
         const shadingBtn = document.getElementById('shadingBtn');
+        
         const fileInput = document.getElementById('fileInput');
         const resetDemoBtn = document.getElementById('resetDemoBtn');
         const exportObjBtn = document.getElementById('exportObjBtn');
-        const exportGlbBtn = document.getElementById('exportGlbBtn'); // TOMBOL GLB BARU
+        const exportGlbBtn = document.getElementById('exportGlbBtn');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
 
@@ -166,17 +168,18 @@
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputColorSpace = THREE.SRGBColorSpace; 
             container.appendChild(renderer.domElement);
+            
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambient);
-            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight1.position.set(5, 10, 7);
             scene.add(dirLight1);
-            const dirLight2 = new THREE.DirectionalLight(0x0284c7, 0.5);
+            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
             dirLight2.position.set(-5, -5, -5);
             scene.add(dirLight2);
 
@@ -190,31 +193,63 @@
             animate();
         }
 
-        function setMesh(geometry) {
+        function setMesh(geometry, sourceMaterial = null) {
             showLoading("Menyiapkan mesh...");
             setTimeout(() => {
                 if (currentMesh) {
                     scene.remove(currentMesh);
                     currentMesh.geometry.dispose();
                 }
+                
                 if (!geometry.isBufferGeometry) geometry = new THREE.BufferGeometry().fromGeometry(geometry);
                 geometry.center();
                 geometry.computeVertexNormals();
                 geometry.computeBoundingSphere();
+                
                 const radius = geometry.boundingSphere.radius;
                 const scale = 1.8 / (radius || 1);
+                
                 originalGeometry = geometry.clone();
-                currentMesh = new THREE.Mesh(geometry, material);
+                
+                // Simpan material bawaan dari file
+                loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                
+                // Cek status toggle tekstur saat ini
+                const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
+                
+                currentMesh = new THREE.Mesh(geometry, activeMat);
                 currentMesh.scale.set(scale, scale, scale);
                 scene.add(currentMesh);
+                
+                // Terapkan state wireframe/shading yang sedang aktif ke mesh baru
+                applyCurrentMaterialStates();
+                
                 updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
                 hideLoading();
             }, 50);
         }
 
+        function applyCurrentMaterialStates() {
+            if (!currentMesh) return;
+            const isWireframe = wireframeBtn.dataset.active === 'true';
+            const isSmooth = shadingBtn.dataset.active === 'true';
+            
+            const applyState = (mat) => {
+                mat.wireframe = isWireframe;
+                mat.flatShading = isSmooth;
+                mat.needsUpdate = true;
+            };
+
+            if (Array.isArray(currentMesh.material)) {
+                currentMesh.material.forEach(applyState);
+            } else {
+                applyState(currentMesh.material);
+            }
+        }
+
         function loadDemoMesh() {
             const demoGeo = new THREE.TorusKnotGeometry(1, 0.35, 128, 32);
-            setMesh(demoGeo);
+            setMesh(demoGeo, defaultMaterial);
         }
 
         function applySimplification() {
@@ -226,10 +261,12 @@
                     const origVertCount = originalGeometry.attributes.position.count;
                     const keepRatio = (100 - reductionPercent) / 100;
                     const targetCount = Math.max(4, Math.floor(origVertCount * keepRatio));
+                    
                     const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
                     currentMesh.geometry.dispose();
                     currentMesh.geometry = simplifiedGeo;
                     currentMesh.geometry.computeVertexNormals();
+                    
                     updateStats(origVertCount, simplifiedGeo.attributes.position.count);
                 } catch (err) {
                     console.error(err);
@@ -255,14 +292,31 @@
             applyBtn.addEventListener('click', applySimplification);
             resetMeshBtn.addEventListener('click', resetToOriginal);
 
-            wireframeBtn.addEventListener('click', () => {
-                material.wireframe = !material.wireframe;
-                wireframeBtn.style.background = material.wireframe ? '#0284c7' : '#27272a';
+            // TOGGLE TEXTURE
+            textureBtn.addEventListener('click', () => {
+                if (!currentMesh) return;
+                isTextureOn = !isTextureOn;
+                textureBtn.dataset.active = isTextureOn;
+                textureBtn.style.background = isTextureOn ? '#0284c7' : '#27272a';
+                
+                currentMesh.material = isTextureOn ? loadedMaterial : defaultMaterial;
+                applyCurrentMaterialStates(); // Pertahankan status wireframe & shading
             });
+
+            // TOGGLE WIREFRAME
+            wireframeBtn.addEventListener('click', () => {
+                const newState = wireframeBtn.dataset.active !== 'true';
+                wireframeBtn.dataset.active = newState;
+                wireframeBtn.style.background = newState ? '#0284c7' : '#27272a';
+                applyCurrentMaterialStates();
+            });
+
+            // TOGGLE SHADING
             shadingBtn.addEventListener('click', () => {
-                material.flatShading = !material.flatShading;
-                material.needsUpdate = true;
-                shadingBtn.style.background = material.flatShading ? '#0284c7' : '#27272a';
+                const newState = shadingBtn.dataset.active !== 'true';
+                shadingBtn.dataset.active = newState;
+                shadingBtn.style.background = newState ? '#0284c7' : '#27272a';
+                applyCurrentMaterialStates();
             });
 
             fileInput.addEventListener('change', (e) => {
@@ -272,13 +326,20 @@
                 const filename = file.name.toLowerCase();
                 const fileURL = URL.createObjectURL(file);
                 const onError = (err) => { alert("Gagal membaca file!"); hideLoading(); };
+                
                 const extractAndSetMesh = (object) => {
                     let foundMesh = null;
                     const root = object.scene || object;
-                    root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
-                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone());
-                    else alert("Tidak ditemukan Mesh 3D.");
-                    hideLoading();
+                    root.traverse((child) => { 
+                        if (child.isMesh && !foundMesh) foundMesh = child; 
+                    });
+                    
+                    if (foundMesh && foundMesh.geometry) {
+                        setMesh(foundMesh.geometry.clone(), foundMesh.material);
+                    } else {
+                        alert("Tidak ditemukan Mesh 3D.");
+                        hideLoading();
+                    }
                     URL.revokeObjectURL(fileURL);
                 };
 
@@ -291,7 +352,6 @@
 
             resetDemoBtn.addEventListener('click', loadDemoMesh);
 
-            // -- FUNGSI EXPORT OBJ --
             exportObjBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 const exporter = new OBJExporter();
@@ -299,35 +359,39 @@
                 downloadFile(result, 'text/plain', `simplified_${slider.value}percent.obj`);
             });
 
-            // -- FUNGSI EXPORT GLB --
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 showLoading("Mengekspor GLB...");
                 
+                // Kembalikan material asli sesaat sebelum diexport (agar tekstur ikut tersimpan)
+                const tempMaterial = currentMesh.material;
+                currentMesh.material = loadedMaterial;
+
                 const exporter = new GLTFExporter();
                 exporter.parse(
                     currentMesh,
                     function (gltfArrayBuffer) {
+                        currentMesh.material = tempMaterial; // Kembalikan state UI
                         downloadFile(gltfArrayBuffer, 'application/octet-stream', `simplified_${slider.value}percent.glb`);
                         hideLoading();
                     },
                     function (error) {
-                        console.error('An error happened during parsing', error);
+                        currentMesh.material = tempMaterial; // Kembalikan state UI
+                        console.error(error);
                         alert("Gagal mengekspor GLB.");
                         hideLoading();
                     },
-                    { binary: true } // Opsi ini memastikan outputnya adalah .GLB (Biner), bukan .GLTF (JSON)
+                    { binary: true }
                 );
             });
         }
 
-        // Helper untuk memicu download browser
         function downloadFile(data, mimeType, filename) {
             const blob = new Blob([data], { type: mimeType });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             link.download = filename;
-            document.body.appendChild(link); // Dibutuhkan untuk Firefox
+            document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
