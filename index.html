@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Pro Version)</title>
+    <title>3D Mesh Simplifier (Undo Support)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -16,7 +16,6 @@
             max-height: 90vh; overflow-y: auto;
         }
         
-        /* Custom Scrollbar untuk panel */
         #ui-panel::-webkit-scrollbar { width: 6px; }
         #ui-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
         #ui-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
@@ -32,28 +31,31 @@
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
         .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
         .btn-group-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; margin-top: 10px; }
+        .header-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         
         button, label.file-btn {
             display: flex; align-items: center; justify-content: center; padding: 9px 8px;
             background: #27272a; color: #f4f4f5; border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-align: center;
         }
-        button:hover, label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
-        button.primary { background: #0284c7; border-color: #0369a1; font-size: 0.825rem; }
-        button.primary:hover { background: #0369a1; }
-        button.success { background: #059669; border-color: #047857; font-size: 0.825rem; }
-        button.success:hover { background: #047857; }
+        button:hover:not(:disabled), label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         
+        button.primary { background: #0284c7; border-color: #0369a1; font-size: 0.825rem; }
+        button.primary:hover:not(:disabled) { background: #0369a1; }
+        button.success { background: #059669; border-color: #047857; font-size: 0.825rem; }
+        button.success:hover:not(:disabled) { background: #047857; }
         button.active-tool { background: #0ea5e9; border-color: #0284c7; color: white; }
 
         input[type="file"] { display: none; }
         .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
         .stats-row { display: flex; justify-content: space-between; }
         .stats-val { font-family: monospace; font-weight: 600; color: #38bdf8; }
+        
         #loading-overlay {
             position: absolute; top: 20px; right: 20px; background: rgba(24, 24, 27, 0.9);
             border: 1px solid #0284c7; color: #38bdf8; padding: 8px 16px; border-radius: 20px;
-            font-size: 0.8rem; font-weight: 500; display: none; align-items: center; gap: 8px;
+            font-size: 0.8rem; font-weight: 500; display: none; align-items: center; gap: 8px; z-index: 20;
         }
         .spinner {
             width: 12px; height: 12px; border: 2px solid #38bdf8; border-top-color: transparent;
@@ -71,7 +73,7 @@
 
     <div id="ui-panel">
         <h2>Mesh Simplifier Pro</h2>
-        <p class="subtitle">Support Tekstur & Transformasi Objek</p>
+        <p class="subtitle">Support Tekstur, Transformasi & Undo</p>
 
         <!-- Upload & Demo -->
         <div class="section">
@@ -86,7 +88,10 @@
 
         <!-- Transform Controls (Move, Rotate, Scale) -->
         <div class="section">
-            <label style="margin-bottom: 2px;">Alat Transformasi</label>
+            <div class="header-group">
+                <label style="margin: 0;">Alat Transformasi</label>
+                <button id="undoBtn" style="padding: 4px 8px; background: #b91c1c; border-color: #991b1b;" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+            </div>
             <div class="btn-group-4">
                 <button id="toolView" class="active-tool" title="View Only (Orbit Camera)">View</button>
                 <button id="toolMove" title="Geser Objek">Geser</button>
@@ -147,7 +152,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { TransformControls } from 'three/addons/controls/TransformControls.js'; // IMPORT TRANSFORM CONTROLS
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -163,6 +168,11 @@
         let isTextureOn = true;    
         const modifier = new SimplifyModifier();
 
+        // --- UNDO SYSTEM ---
+        const historyStack = [];
+        const MAX_HISTORY = 10;
+        let initialTransformState = null;
+
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide
         });
@@ -172,6 +182,7 @@
         const percentDisplay = document.getElementById('percentDisplay');
         const applyBtn = document.getElementById('applyBtn');
         const resetMeshBtn = document.getElementById('resetMeshBtn');
+        const undoBtn = document.getElementById('undoBtn');
         
         const textureBtn = document.getElementById('textureBtn');
         const wireframeBtn = document.getElementById('wireframeBtn');
@@ -203,22 +214,31 @@
             renderer.outputColorSpace = THREE.SRGBColorSpace; 
             container.appendChild(renderer.domElement);
             
-            // 1. Orbit Controls (Untuk Navigasi Kamera)
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true; 
             controls.dampingFactor = 0.05;
 
-            // 2. Transform Controls (Untuk Geser, Putar, Skala Objek)
+            // Transform Controls Setup
             transformControl = new TransformControls(camera, renderer.domElement);
-            // Matikan OrbitControls saat kita sedang menggeser objek agar tidak bentrok
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
+                
+                // SISTEM UNDO: Rekam posisi sebelum ditarik
+                if (event.value && currentMesh) { 
+                    initialTransformState = {
+                        position: currentMesh.position.clone(),
+                        rotation: currentMesh.rotation.clone(),
+                        scale: currentMesh.scale.clone()
+                    };
+                } else if (!event.value && initialTransformState) {
+                    saveToHistory({ type: 'transform', ...initialTransformState });
+                    initialTransformState = null;
+                }
             });
             scene.add(transformControl);
 
             // Lighting
-            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
-            scene.add(ambient);
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
             const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight1.position.set(5, 10, 7);
             scene.add(dirLight1);
@@ -236,10 +256,58 @@
             animate();
         }
 
+        // --- SISTEM UNDO LOGIC ---
+        function saveToHistory(state) {
+            historyStack.push(state);
+            if (historyStack.length > MAX_HISTORY) {
+                const removed = historyStack.shift();
+                if (removed.type === 'mesh') removed.geometry.dispose(); // Bersihkan RAM
+            }
+            updateUndoUI();
+        }
+
+        function performUndo() {
+            if (historyStack.length === 0 || !currentMesh) return;
+            const lastState = historyStack.pop();
+
+            if (lastState.type === 'transform') {
+                currentMesh.position.copy(lastState.position);
+                currentMesh.rotation.copy(lastState.rotation);
+                currentMesh.scale.copy(lastState.scale);
+            } else if (lastState.type === 'mesh') {
+                currentMesh.geometry.dispose();
+                currentMesh.geometry = lastState.geometry;
+                currentMesh.geometry.computeVertexNormals();
+                updateStats(originalGeometry.attributes.position.count, currentMesh.geometry.attributes.position.count);
+            }
+            
+            // Refresh gizmo UI jika transform control sedang aktif
+            if (transformControl.object) {
+                transformControl.detach();
+                transformControl.attach(currentMesh);
+            }
+
+            updateUndoUI();
+        }
+
+        function updateUndoUI() {
+            undoBtn.disabled = historyStack.length === 0;
+            undoBtn.innerText = `↩ Undo (${historyStack.length})`;
+            if (historyStack.length === 0) undoBtn.innerText = `↩ Undo`;
+        }
+
+        function clearHistory() {
+            historyStack.forEach(state => { if (state.type === 'mesh') state.geometry.dispose(); });
+            historyStack.length = 0;
+            updateUndoUI();
+        }
+
+        // --- CORE LOGIC ---
         function setMesh(geometry, sourceMaterial = null) {
             showLoading("Menyiapkan mesh...");
             setTimeout(() => {
-                // Bersihkan mesh dan transform controls yang lama
+                clearHistory(); // Bersihkan history tiap ganti file
+
                 if (currentMesh) {
                     transformControl.detach();
                     scene.remove(currentMesh);
@@ -262,7 +330,6 @@
                 currentMesh.scale.set(scale, scale, scale);
                 scene.add(currentMesh);
                 
-                // Jika sedang dalam mode transform, pasangkan gizmo ke objek baru
                 if (transformControl.mode !== '' && toolView.className !== 'active-tool') {
                     transformControl.attach(currentMesh);
                 }
@@ -277,13 +344,7 @@
             if (!currentMesh) return;
             const isWireframe = wireframeBtn.dataset.active === 'true';
             const isSmooth = shadingBtn.dataset.active === 'true';
-            
-            const applyState = (mat) => {
-                mat.wireframe = isWireframe;
-                mat.flatShading = isSmooth;
-                mat.needsUpdate = true;
-            };
-
+            const applyState = (mat) => { mat.wireframe = isWireframe; mat.flatShading = isSmooth; mat.needsUpdate = true; };
             if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState);
             else applyState(currentMesh.material);
         }
@@ -296,6 +357,10 @@
         function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
+            
+            // SISTEM UNDO: Simpan Geometri sebelum dikurangi
+            saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
+
             showLoading(`Menyederhanakan (${reductionPercent}%)...`);
             setTimeout(() => {
                 try {
@@ -320,6 +385,8 @@
 
         function resetToOriginal() {
             if (!originalGeometry || !currentMesh) return;
+            saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
+
             currentMesh.geometry.dispose();
             currentMesh.geometry = originalGeometry.clone();
             slider.value = 50;
@@ -332,34 +399,32 @@
         }
 
         function setupUIEventListeners() {
-            // SLIDER & BUTTONS
+            // SLIDER & ACTION BUTTONS
             slider.addEventListener('input', (e) => percentDisplay.textContent = `${e.target.value}%`);
             slider.addEventListener('change', applySimplification);
             applyBtn.addEventListener('click', applySimplification);
             resetMeshBtn.addEventListener('click', resetToOriginal);
+            
+            // UNDO BUTTON & SHORTCUT
+            undoBtn.addEventListener('click', performUndo);
+            window.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'z') performUndo();
+            });
 
             // TRANSFORM TOOLS
             toolView.addEventListener('click', () => {
-                resetToolButtons();
-                toolView.classList.add('active-tool');
-                transformControl.detach(); // Sembunyikan gizmo
+                resetToolButtons(); toolView.classList.add('active-tool'); transformControl.detach();
             });
             toolMove.addEventListener('click', () => {
-                resetToolButtons();
-                toolMove.classList.add('active-tool');
-                transformControl.setMode('translate');
+                resetToolButtons(); toolMove.classList.add('active-tool'); transformControl.setMode('translate');
                 if (currentMesh) transformControl.attach(currentMesh);
             });
             toolRotate.addEventListener('click', () => {
-                resetToolButtons();
-                toolRotate.classList.add('active-tool');
-                transformControl.setMode('rotate');
+                resetToolButtons(); toolRotate.classList.add('active-tool'); transformControl.setMode('rotate');
                 if (currentMesh) transformControl.attach(currentMesh);
             });
             toolScale.addEventListener('click', () => {
-                resetToolButtons();
-                toolScale.classList.add('active-tool');
-                transformControl.setMode('scale');
+                resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale');
                 if (currentMesh) transformControl.attach(currentMesh);
             });
 
@@ -400,8 +465,7 @@
                     root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
                     if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material);
                     else alert("Tidak ditemukan Mesh 3D.");
-                    hideLoading();
-                    URL.revokeObjectURL(fileURL);
+                    hideLoading(); URL.revokeObjectURL(fileURL);
                 };
 
                 if (filename.endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, onError);
@@ -417,36 +481,30 @@
             exportObjBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 const exporter = new OBJExporter();
-                const result = exporter.parse(currentMesh);
-                downloadFile(result, 'text/plain', `simplified_${slider.value}percent.obj`);
+                downloadFile(exporter.parse(currentMesh), 'text/plain', `simplified_${slider.value}percent.obj`);
             });
 
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 showLoading("Mengekspor GLB...");
-                
-                // Pastikan transform control dilepas agar gizmo panah tidak ikut ter-export
                 const prevMode = toolView.className === 'active-tool' ? 'view' : transformControl.mode;
                 transformControl.detach();
 
                 const tempMaterial = currentMesh.material;
                 currentMesh.material = loadedMaterial;
 
-                const exporter = new GLTFExporter();
-                exporter.parse(
-                    scene, // Mengekspor seluruh scene (menangkap posisi, rotasi, skala)
+                new GLTFExporter().parse(
+                    scene, 
                     function (gltfArrayBuffer) {
                         currentMesh.material = tempMaterial;
-                        if (prevMode !== 'view') transformControl.attach(currentMesh); // Kembalikan gizmo jika tadi aktif
+                        if (prevMode !== 'view') transformControl.attach(currentMesh);
                         downloadFile(gltfArrayBuffer, 'application/octet-stream', `simplified_${slider.value}percent.glb`);
                         hideLoading();
                     },
                     function (error) {
                         currentMesh.material = tempMaterial;
                         if (prevMode !== 'view') transformControl.attach(currentMesh);
-                        console.error(error);
-                        alert("Gagal mengekspor GLB.");
-                        hideLoading();
+                        console.error(error); alert("Gagal mengekspor GLB."); hideLoading();
                     },
                     { binary: true }
                 );
@@ -455,13 +513,8 @@
 
         function downloadFile(data, mimeType, filename) {
             const blob = new Blob([data], { type: mimeType });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
+            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
         }
 
         function updateStats(origCount, currCount) {
