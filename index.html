@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Multi-format)</title>
+    <title>3D Mesh Simplifier (Multi-format & Export)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -30,7 +30,7 @@
         button:hover, label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
         button.primary { background: #0284c7; border-color: #0369a1; }
         button.primary:hover { background: #0369a1; }
-        button.success { background: #059669; border-color: #047857; grid-column: span 2; }
+        button.success { background: #059669; border-color: #047857; }
         button.success:hover { background: #047857; }
         input[type="file"] { display: none; }
         .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
@@ -57,7 +57,7 @@
 
     <div id="ui-panel">
         <h2>Mesh Simplifier</h2>
-        <p class="subtitle">Mendukung file .OBJ, .GLB, dan .FBX.</p>
+        <p class="subtitle">Upload OBJ/GLB/FBX. Export ke OBJ/GLB.</p>
 
         <!-- Section 1: Upload / Demo -->
         <div class="section">
@@ -99,8 +99,11 @@
                 <div class="stats-row"><span>Vertex Hasil:</span><span class="stats-val" id="currVerts">0</span></div>
                 <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
             </div>
-            <div class="btn-group" style="margin-top: 10px;">
-                <button id="exportBtn" class="success">💾 Export Hasil (.OBJ)</button>
+            
+            <label style="margin-top: 12px; margin-bottom: 4px;">Simpan Hasil:</label>
+            <div class="btn-group">
+                <button id="exportObjBtn" class="success">💾 Export .OBJ</button>
+                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Export .GLB</button>
             </div>
         </div>
     </div>
@@ -123,6 +126,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'; // TAMBAHAN EXPORTER GLTF
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 
         // --- App State ---
@@ -148,24 +152,21 @@
         const shadingBtn = document.getElementById('shadingBtn');
         const fileInput = document.getElementById('fileInput');
         const resetDemoBtn = document.getElementById('resetDemoBtn');
-        const exportBtn = document.getElementById('exportBtn');
+        const exportObjBtn = document.getElementById('exportObjBtn');
+        const exportGlbBtn = document.getElementById('exportGlbBtn'); // TOMBOL GLB BARU
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
 
         function init() {
             const container = document.getElementById('canvas-container');
-            
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x121214);
-
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 2, 5);
-
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             container.appendChild(renderer.domElement);
-
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
@@ -196,25 +197,16 @@
                     scene.remove(currentMesh);
                     currentMesh.geometry.dispose();
                 }
-
-                // Konversi geometri ke BufferGeometry standar jika diperlukan
-                if (!geometry.isBufferGeometry) {
-                    geometry = new THREE.BufferGeometry().fromGeometry(geometry);
-                }
-
+                if (!geometry.isBufferGeometry) geometry = new THREE.BufferGeometry().fromGeometry(geometry);
                 geometry.center();
                 geometry.computeVertexNormals();
-
                 geometry.computeBoundingSphere();
                 const radius = geometry.boundingSphere.radius;
                 const scale = 1.8 / (radius || 1);
-
                 originalGeometry = geometry.clone();
-
                 currentMesh = new THREE.Mesh(geometry, material);
                 currentMesh.scale.set(scale, scale, scale);
                 scene.add(currentMesh);
-
                 updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
                 hideLoading();
             }, 50);
@@ -229,22 +221,19 @@
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
             showLoading(`Menyederhanakan (${reductionPercent}%)...`);
-
             setTimeout(() => {
                 try {
                     const origVertCount = originalGeometry.attributes.position.count;
                     const keepRatio = (100 - reductionPercent) / 100;
                     const targetCount = Math.max(4, Math.floor(origVertCount * keepRatio));
-
                     const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
                     currentMesh.geometry.dispose();
                     currentMesh.geometry = simplifiedGeo;
                     currentMesh.geometry.computeVertexNormals();
-
                     updateStats(origVertCount, simplifiedGeo.attributes.position.count);
                 } catch (err) {
-                    console.error("Error simplifikasi:", err);
-                    alert("Gagal memproses. Coba kurangi persentase atau pastikan model tidak rusak.");
+                    console.error(err);
+                    alert("Gagal memproses. Coba kurangi persentase.");
                 } finally {
                     hideLoading();
                 }
@@ -270,79 +259,78 @@
                 material.wireframe = !material.wireframe;
                 wireframeBtn.style.background = material.wireframe ? '#0284c7' : '#27272a';
             });
-
             shadingBtn.addEventListener('click', () => {
                 material.flatShading = !material.flatShading;
                 material.needsUpdate = true;
                 shadingBtn.style.background = material.flatShading ? '#0284c7' : '#27272a';
             });
 
-            // MULTI-FORMAT UPLOAD HANDLER
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-
                 showLoading("Membaca file " + file.name + "...");
-                
                 const filename = file.name.toLowerCase();
-                const fileURL = URL.createObjectURL(file); // Buat URL virtual untuk file
-
-                const onError = (err) => {
-                    console.error(err);
-                    alert("Gagal membaca file! Pastikan format sesuai.");
-                    hideLoading();
-                };
-
-                // Fungsi untuk mengambil Mesh pertama dari hirarki (FBX/GLTF sering berbentuk grup)
+                const fileURL = URL.createObjectURL(file);
+                const onError = (err) => { alert("Gagal membaca file!"); hideLoading(); };
                 const extractAndSetMesh = (object) => {
                     let foundMesh = null;
-                    const root = object.scene || object; // GLTF menggunakan object.scene
-                    
-                    root.traverse((child) => {
-                        if (child.isMesh && !foundMesh) {
-                            foundMesh = child;
-                        }
-                    });
-
-                    if (foundMesh && foundMesh.geometry) {
-                        setMesh(foundMesh.geometry.clone());
-                    } else {
-                        alert("Tidak ditemukan Mesh 3D di dalam file ini.");
-                        hideLoading();
-                    }
-                    URL.revokeObjectURL(fileURL); // Bersihkan memori URL
-                };
-
-                // Tentukan loader berdasarkan ekstensi file
-                if (filename.endsWith('.obj')) {
-                    new OBJLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                } else if (filename.endsWith('.glb') || filename.endsWith('.gltf')) {
-                    new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                } else if (filename.endsWith('.fbx')) {
-                    new FBXLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                } else {
-                    alert("Format tidak didukung!");
+                    const root = object.scene || object;
+                    root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
+                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone());
+                    else alert("Tidak ditemukan Mesh 3D.");
                     hideLoading();
                     URL.revokeObjectURL(fileURL);
-                }
-                
-                // Reset value input file agar bisa upload file yang sama lagi jika perlu
+                };
+
+                if (filename.endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                else if (filename.endsWith('.glb') || filename.endsWith('.gltf')) new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                else if (filename.endsWith('.fbx')) new FBXLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                else { alert("Format tidak didukung!"); hideLoading(); URL.revokeObjectURL(fileURL); }
                 e.target.value = '';
             });
 
             resetDemoBtn.addEventListener('click', loadDemoMesh);
 
-            exportBtn.addEventListener('click', () => {
+            // -- FUNGSI EXPORT OBJ --
+            exportObjBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 const exporter = new OBJExporter();
                 const result = exporter.parse(currentMesh);
-                const blob = new Blob([result], { type: 'text/plain' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = `simplified_${slider.value}percent.obj`;
-                link.click();
-                URL.revokeObjectURL(link.href);
+                downloadFile(result, 'text/plain', `simplified_${slider.value}percent.obj`);
             });
+
+            // -- FUNGSI EXPORT GLB --
+            exportGlbBtn.addEventListener('click', () => {
+                if (!currentMesh) return;
+                showLoading("Mengekspor GLB...");
+                
+                const exporter = new GLTFExporter();
+                exporter.parse(
+                    currentMesh,
+                    function (gltfArrayBuffer) {
+                        downloadFile(gltfArrayBuffer, 'application/octet-stream', `simplified_${slider.value}percent.glb`);
+                        hideLoading();
+                    },
+                    function (error) {
+                        console.error('An error happened during parsing', error);
+                        alert("Gagal mengekspor GLB.");
+                        hideLoading();
+                    },
+                    { binary: true } // Opsi ini memastikan outputnya adalah .GLB (Biner), bukan .GLTF (JSON)
+                );
+            });
+        }
+
+        // Helper untuk memicu download browser
+        function downloadFile(data, mimeType, filename) {
+            const blob = new Blob([data], { type: mimeType });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link); // Dibutuhkan untuk Firefox
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
         }
 
         function updateStats(origCount, currCount) {
