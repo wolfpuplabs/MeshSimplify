@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Textures & Multi-format)</title>
+    <title>3D Mesh Simplifier (Pro Version)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -13,7 +13,14 @@
             background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px;
             padding: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); z-index: 10;
+            max-height: 90vh; overflow-y: auto;
         }
+        
+        /* Custom Scrollbar untuk panel */
+        #ui-panel::-webkit-scrollbar { width: 6px; }
+        #ui-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        #ui-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
         h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 6px; color: #f4f4f5; }
         p.subtitle { font-size: 0.8rem; color: #a1a1aa; margin-bottom: 16px; }
         .section { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
@@ -22,9 +29,9 @@
         .slider-val { color: #38bdf8; font-weight: 600; }
         input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: #27272a; outline: none; accent-color: #38bdf8; cursor: pointer; }
         
-        /* Grid diperbarui jadi 3 kolom untuk muat 3 tombol toggle */
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
         .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+        .btn-group-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; margin-top: 10px; }
         
         button, label.file-btn {
             display: flex; align-items: center; justify-content: center; padding: 9px 8px;
@@ -36,6 +43,9 @@
         button.primary:hover { background: #0369a1; }
         button.success { background: #059669; border-color: #047857; font-size: 0.825rem; }
         button.success:hover { background: #047857; }
+        
+        button.active-tool { background: #0ea5e9; border-color: #0284c7; color: white; }
+
         input[type="file"] { display: none; }
         .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
         .stats-row { display: flex; justify-content: space-between; }
@@ -60,19 +70,32 @@
     </div>
 
     <div id="ui-panel">
-        <h2>Mesh Simplifier</h2>
-        <p class="subtitle">Support Tekstur (Gunakan .GLB / .FBX)</p>
+        <h2>Mesh Simplifier Pro</h2>
+        <p class="subtitle">Support Tekstur & Transformasi Objek</p>
 
+        <!-- Upload & Demo -->
         <div class="section">
             <div class="btn-group" style="grid-template-columns: 1fr;">
                 <label class="file-btn" style="font-size: 0.825rem;">
-                    📁 Upload Model 3D
+                    📁 Upload Model (.OBJ, .GLB, .FBX)
                     <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
                 </label>
                 <button id="resetDemoBtn" style="font-size: 0.825rem;">🔄 Load Sample Demo</button>
             </div>
         </div>
 
+        <!-- Transform Controls (Move, Rotate, Scale) -->
+        <div class="section">
+            <label style="margin-bottom: 2px;">Alat Transformasi</label>
+            <div class="btn-group-4">
+                <button id="toolView" class="active-tool" title="View Only (Orbit Camera)">View</button>
+                <button id="toolMove" title="Geser Objek">Geser</button>
+                <button id="toolRotate" title="Putar Objek">Putar</button>
+                <button id="toolScale" title="Ubah Skala">Skala</button>
+            </div>
+        </div>
+
+        <!-- Percentage -->
         <div class="section">
             <label>
                 <span>Pengurangan Polygon</span>
@@ -85,8 +108,8 @@
             </div>
         </div>
 
+        <!-- View Settings -->
         <div class="section">
-            <!-- TIGA TOMBOL TOGGLE -->
             <div class="btn-group-3">
                 <button id="textureBtn" data-active="true" style="background: #0284c7;">Tekstur</button>
                 <button id="wireframeBtn" data-active="false">Wireframe</button>
@@ -94,6 +117,7 @@
             </div>
         </div>
 
+        <!-- Stats & Export -->
         <div class="section">
             <div class="stats-box">
                 <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
@@ -123,6 +147,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js'; // IMPORT TRANSFORM CONTROLS
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -130,19 +155,19 @@
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer, controls, transformControl;
         let currentMesh = null;
         let originalGeometry = null; 
         
-        let loadedMaterial = null; // Menyimpan material asli dari file
-        let isTextureOn = true;    // Status toggle tekstur
+        let loadedMaterial = null; 
+        let isTextureOn = true;    
         const modifier = new SimplifyModifier();
 
-        // Material Default (Mode Polos / Clay)
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide
         });
 
+        // DOM Elements
         const slider = document.getElementById('reductionSlider');
         const percentDisplay = document.getElementById('percentDisplay');
         const applyBtn = document.getElementById('applyBtn');
@@ -152,6 +177,11 @@
         const wireframeBtn = document.getElementById('wireframeBtn');
         const shadingBtn = document.getElementById('shadingBtn');
         
+        const toolView = document.getElementById('toolView');
+        const toolMove = document.getElementById('toolMove');
+        const toolRotate = document.getElementById('toolRotate');
+        const toolScale = document.getElementById('toolScale');
+
         const fileInput = document.getElementById('fileInput');
         const resetDemoBtn = document.getElementById('resetDemoBtn');
         const exportObjBtn = document.getElementById('exportObjBtn');
@@ -163,17 +193,30 @@
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x121214);
+            
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 2, 5);
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace; 
             container.appendChild(renderer.domElement);
             
+            // 1. Orbit Controls (Untuk Navigasi Kamera)
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls.enableDamping = true; 
+            controls.dampingFactor = 0.05;
 
+            // 2. Transform Controls (Untuk Geser, Putar, Skala Objek)
+            transformControl = new TransformControls(camera, renderer.domElement);
+            // Matikan OrbitControls saat kita sedang menggeser objek agar tidak bentrok
+            transformControl.addEventListener('dragging-changed', function (event) {
+                controls.enabled = !event.value;
+            });
+            scene.add(transformControl);
+
+            // Lighting
             const ambient = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambient);
             const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -196,7 +239,9 @@
         function setMesh(geometry, sourceMaterial = null) {
             showLoading("Menyiapkan mesh...");
             setTimeout(() => {
+                // Bersihkan mesh dan transform controls yang lama
                 if (currentMesh) {
+                    transformControl.detach();
                     scene.remove(currentMesh);
                     currentMesh.geometry.dispose();
                 }
@@ -210,20 +255,19 @@
                 const scale = 1.8 / (radius || 1);
                 
                 originalGeometry = geometry.clone();
-                
-                // Simpan material bawaan dari file
                 loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
-                
-                // Cek status toggle tekstur saat ini
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
                 
                 currentMesh = new THREE.Mesh(geometry, activeMat);
                 currentMesh.scale.set(scale, scale, scale);
                 scene.add(currentMesh);
                 
-                // Terapkan state wireframe/shading yang sedang aktif ke mesh baru
-                applyCurrentMaterialStates();
+                // Jika sedang dalam mode transform, pasangkan gizmo ke objek baru
+                if (transformControl.mode !== '' && toolView.className !== 'active-tool') {
+                    transformControl.attach(currentMesh);
+                }
                 
+                applyCurrentMaterialStates();
                 updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
                 hideLoading();
             }, 50);
@@ -240,11 +284,8 @@
                 mat.needsUpdate = true;
             };
 
-            if (Array.isArray(currentMesh.material)) {
-                currentMesh.material.forEach(applyState);
-            } else {
-                applyState(currentMesh.material);
-            }
+            if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState);
+            else applyState(currentMesh.material);
         }
 
         function loadDemoMesh() {
@@ -286,32 +327,57 @@
             updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
         }
 
+        function resetToolButtons() {
+            [toolView, toolMove, toolRotate, toolScale].forEach(btn => btn.classList.remove('active-tool'));
+        }
+
         function setupUIEventListeners() {
+            // SLIDER & BUTTONS
             slider.addEventListener('input', (e) => percentDisplay.textContent = `${e.target.value}%`);
             slider.addEventListener('change', applySimplification);
             applyBtn.addEventListener('click', applySimplification);
             resetMeshBtn.addEventListener('click', resetToOriginal);
 
-            // TOGGLE TEXTURE
+            // TRANSFORM TOOLS
+            toolView.addEventListener('click', () => {
+                resetToolButtons();
+                toolView.classList.add('active-tool');
+                transformControl.detach(); // Sembunyikan gizmo
+            });
+            toolMove.addEventListener('click', () => {
+                resetToolButtons();
+                toolMove.classList.add('active-tool');
+                transformControl.setMode('translate');
+                if (currentMesh) transformControl.attach(currentMesh);
+            });
+            toolRotate.addEventListener('click', () => {
+                resetToolButtons();
+                toolRotate.classList.add('active-tool');
+                transformControl.setMode('rotate');
+                if (currentMesh) transformControl.attach(currentMesh);
+            });
+            toolScale.addEventListener('click', () => {
+                resetToolButtons();
+                toolScale.classList.add('active-tool');
+                transformControl.setMode('scale');
+                if (currentMesh) transformControl.attach(currentMesh);
+            });
+
+            // VIEW TOGGLES
             textureBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 isTextureOn = !isTextureOn;
                 textureBtn.dataset.active = isTextureOn;
                 textureBtn.style.background = isTextureOn ? '#0284c7' : '#27272a';
-                
                 currentMesh.material = isTextureOn ? loadedMaterial : defaultMaterial;
-                applyCurrentMaterialStates(); // Pertahankan status wireframe & shading
+                applyCurrentMaterialStates(); 
             });
-
-            // TOGGLE WIREFRAME
             wireframeBtn.addEventListener('click', () => {
                 const newState = wireframeBtn.dataset.active !== 'true';
                 wireframeBtn.dataset.active = newState;
                 wireframeBtn.style.background = newState ? '#0284c7' : '#27272a';
                 applyCurrentMaterialStates();
             });
-
-            // TOGGLE SHADING
             shadingBtn.addEventListener('click', () => {
                 const newState = shadingBtn.dataset.active !== 'true';
                 shadingBtn.dataset.active = newState;
@@ -319,6 +385,7 @@
                 applyCurrentMaterialStates();
             });
 
+            // FILE UPLOAD
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -330,16 +397,10 @@
                 const extractAndSetMesh = (object) => {
                     let foundMesh = null;
                     const root = object.scene || object;
-                    root.traverse((child) => { 
-                        if (child.isMesh && !foundMesh) foundMesh = child; 
-                    });
-                    
-                    if (foundMesh && foundMesh.geometry) {
-                        setMesh(foundMesh.geometry.clone(), foundMesh.material);
-                    } else {
-                        alert("Tidak ditemukan Mesh 3D.");
-                        hideLoading();
-                    }
+                    root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
+                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material);
+                    else alert("Tidak ditemukan Mesh 3D.");
+                    hideLoading();
                     URL.revokeObjectURL(fileURL);
                 };
 
@@ -352,6 +413,7 @@
 
             resetDemoBtn.addEventListener('click', loadDemoMesh);
 
+            // EXPORT
             exportObjBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 const exporter = new OBJExporter();
@@ -363,20 +425,25 @@
                 if (!currentMesh) return;
                 showLoading("Mengekspor GLB...");
                 
-                // Kembalikan material asli sesaat sebelum diexport (agar tekstur ikut tersimpan)
+                // Pastikan transform control dilepas agar gizmo panah tidak ikut ter-export
+                const prevMode = toolView.className === 'active-tool' ? 'view' : transformControl.mode;
+                transformControl.detach();
+
                 const tempMaterial = currentMesh.material;
                 currentMesh.material = loadedMaterial;
 
                 const exporter = new GLTFExporter();
                 exporter.parse(
-                    currentMesh,
+                    scene, // Mengekspor seluruh scene (menangkap posisi, rotasi, skala)
                     function (gltfArrayBuffer) {
-                        currentMesh.material = tempMaterial; // Kembalikan state UI
+                        currentMesh.material = tempMaterial;
+                        if (prevMode !== 'view') transformControl.attach(currentMesh); // Kembalikan gizmo jika tadi aktif
                         downloadFile(gltfArrayBuffer, 'application/octet-stream', `simplified_${slider.value}percent.glb`);
                         hideLoading();
                     },
                     function (error) {
-                        currentMesh.material = tempMaterial; // Kembalikan state UI
+                        currentMesh.material = tempMaterial;
+                        if (prevMode !== 'view') transformControl.attach(currentMesh);
                         console.error(error);
                         alert("Gagal mengekspor GLB.");
                         hideLoading();
