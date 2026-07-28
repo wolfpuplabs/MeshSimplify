@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Undo Support)</title>
+    <title>3D Mesh Simplifier (Compression & Undo)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -68,12 +68,12 @@
 
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <span id="loading-text">Memproses Mesh...</span>
+        <span id="loading-text">Memproses...</span>
     </div>
 
     <div id="ui-panel">
         <h2>Mesh Simplifier Pro</h2>
-        <p class="subtitle">Support Tekstur, Transformasi & Undo</p>
+        <p class="subtitle">Auto-Compress (glTF-Transform)</p>
 
         <!-- Upload & Demo -->
         <div class="section">
@@ -86,7 +86,7 @@
             </div>
         </div>
 
-        <!-- Transform Controls (Move, Rotate, Scale) -->
+        <!-- Transform Controls -->
         <div class="section">
             <div class="header-group">
                 <label style="margin: 0;">Alat Transformasi</label>
@@ -130,10 +130,10 @@
                 <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
             </div>
             
-            <label style="margin-top: 12px; margin-bottom: 4px;">Simpan Hasil:</label>
+            <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Optimized):</label>
             <div class="btn-group">
-                <button id="exportObjBtn" class="success">💾 .OBJ</button>
-                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 .GLB</button>
+                <button id="exportObjBtn" class="success">💾 Raw .OBJ</button>
+                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;" title="Compressed GLB">📦 Kompres .GLB</button>
             </div>
         </div>
     </div>
@@ -144,7 +144,10 @@
         {
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
+                "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
+                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1"
             }
         }
     </script>
@@ -159,6 +162,11 @@
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+        
+        // --- glTF-Transform Compressor Imports ---
+        import { WebIO } from '@gltf-transform/core';
+        import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
+        import { weld, quantize, dedup } from '@gltf-transform/functions';
 
         let scene, camera, renderer, controls, transformControl;
         let currentMesh = null;
@@ -215,20 +223,14 @@
             container.appendChild(renderer.domElement);
             
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; 
-            controls.dampingFactor = 0.05;
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
 
-            // Transform Controls Setup
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
-                
-                // SISTEM UNDO: Rekam posisi sebelum ditarik
                 if (event.value && currentMesh) { 
                     initialTransformState = {
-                        position: currentMesh.position.clone(),
-                        rotation: currentMesh.rotation.clone(),
-                        scale: currentMesh.scale.clone()
+                        position: currentMesh.position.clone(), rotation: currentMesh.rotation.clone(), scale: currentMesh.scale.clone()
                     };
                 } else if (!event.value && initialTransformState) {
                     saveToHistory({ type: 'transform', ...initialTransformState });
@@ -237,31 +239,20 @@
             });
             scene.add(transformControl);
 
-            // Lighting
             scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
-            dirLight1.position.set(5, 10, 7);
-            scene.add(dirLight1);
-            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight2.position.set(-5, -5, -5);
-            scene.add(dirLight2);
-
-            const grid = new THREE.GridHelper(10, 20, 0x3f3f46, 0x27272a);
-            grid.position.y = -1.2;
-            scene.add(grid);
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5); dirLight1.position.set(5, 10, 7); scene.add(dirLight1);
+            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
+            
+            const grid = new THREE.GridHelper(10, 20, 0x3f3f46, 0x27272a); grid.position.y = -1.2; scene.add(grid);
 
             loadDemoMesh();
-            window.addEventListener('resize', onWindowResize);
-            setupUIEventListeners();
-            animate();
+            window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
         }
 
-        // --- SISTEM UNDO LOGIC ---
         function saveToHistory(state) {
             historyStack.push(state);
             if (historyStack.length > MAX_HISTORY) {
-                const removed = historyStack.shift();
-                if (removed.type === 'mesh') removed.geometry.dispose(); // Bersihkan RAM
+                const removed = historyStack.shift(); if (removed.type === 'mesh') removed.geometry.dispose();
             }
             updateUndoUI();
         }
@@ -271,68 +262,39 @@
             const lastState = historyStack.pop();
 
             if (lastState.type === 'transform') {
-                currentMesh.position.copy(lastState.position);
-                currentMesh.rotation.copy(lastState.rotation);
-                currentMesh.scale.copy(lastState.scale);
+                currentMesh.position.copy(lastState.position); currentMesh.rotation.copy(lastState.rotation); currentMesh.scale.copy(lastState.scale);
             } else if (lastState.type === 'mesh') {
-                currentMesh.geometry.dispose();
-                currentMesh.geometry = lastState.geometry;
-                currentMesh.geometry.computeVertexNormals();
+                currentMesh.geometry.dispose(); currentMesh.geometry = lastState.geometry; currentMesh.geometry.computeVertexNormals();
                 updateStats(originalGeometry.attributes.position.count, currentMesh.geometry.attributes.position.count);
             }
-            
-            // Refresh gizmo UI jika transform control sedang aktif
-            if (transformControl.object) {
-                transformControl.detach();
-                transformControl.attach(currentMesh);
-            }
-
+            if (transformControl.object) { transformControl.detach(); transformControl.attach(currentMesh); }
             updateUndoUI();
         }
 
         function updateUndoUI() {
             undoBtn.disabled = historyStack.length === 0;
-            undoBtn.innerText = `↩ Undo (${historyStack.length})`;
-            if (historyStack.length === 0) undoBtn.innerText = `↩ Undo`;
+            undoBtn.innerText = historyStack.length === 0 ? `↩ Undo` : `↩ Undo (${historyStack.length})`;
         }
 
         function clearHistory() {
             historyStack.forEach(state => { if (state.type === 'mesh') state.geometry.dispose(); });
-            historyStack.length = 0;
-            updateUndoUI();
+            historyStack.length = 0; updateUndoUI();
         }
 
-        // --- CORE LOGIC ---
         function setMesh(geometry, sourceMaterial = null) {
             showLoading("Menyiapkan mesh...");
             setTimeout(() => {
-                clearHistory(); // Bersihkan history tiap ganti file
-
-                if (currentMesh) {
-                    transformControl.detach();
-                    scene.remove(currentMesh);
-                    currentMesh.geometry.dispose();
-                }
-                
+                clearHistory(); 
+                if (currentMesh) { transformControl.detach(); scene.remove(currentMesh); currentMesh.geometry.dispose(); }
                 if (!geometry.isBufferGeometry) geometry = new THREE.BufferGeometry().fromGeometry(geometry);
-                geometry.center();
-                geometry.computeVertexNormals();
-                geometry.computeBoundingSphere();
+                geometry.center(); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
+                const radius = geometry.boundingSphere.radius; const scale = 1.8 / (radius || 1);
                 
-                const radius = geometry.boundingSphere.radius;
-                const scale = 1.8 / (radius || 1);
-                
-                originalGeometry = geometry.clone();
-                loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                originalGeometry = geometry.clone(); loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
                 
-                currentMesh = new THREE.Mesh(geometry, activeMat);
-                currentMesh.scale.set(scale, scale, scale);
-                scene.add(currentMesh);
-                
-                if (transformControl.mode !== '' && toolView.className !== 'active-tool') {
-                    transformControl.attach(currentMesh);
-                }
+                currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
+                if (transformControl.mode !== '' && toolView.className !== 'active-tool') transformControl.attach(currentMesh);
                 
                 applyCurrentMaterialStates();
                 updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
@@ -342,171 +304,138 @@
 
         function applyCurrentMaterialStates() {
             if (!currentMesh) return;
-            const isWireframe = wireframeBtn.dataset.active === 'true';
-            const isSmooth = shadingBtn.dataset.active === 'true';
+            const isWireframe = wireframeBtn.dataset.active === 'true'; const isSmooth = shadingBtn.dataset.active === 'true';
             const applyState = (mat) => { mat.wireframe = isWireframe; mat.flatShading = isSmooth; mat.needsUpdate = true; };
-            if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState);
-            else applyState(currentMesh.material);
+            if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState); else applyState(currentMesh.material);
         }
 
-        function loadDemoMesh() {
-            const demoGeo = new THREE.TorusKnotGeometry(1, 0.35, 128, 32);
-            setMesh(demoGeo, defaultMaterial);
-        }
+        function loadDemoMesh() { setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); }
 
         function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
-            
-            // SISTEM UNDO: Simpan Geometri sebelum dikurangi
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
 
             showLoading(`Menyederhanakan (${reductionPercent}%)...`);
             setTimeout(() => {
                 try {
                     const origVertCount = originalGeometry.attributes.position.count;
-                    const keepRatio = (100 - reductionPercent) / 100;
-                    const targetCount = Math.max(4, Math.floor(origVertCount * keepRatio));
-                    
+                    const targetCount = Math.max(4, Math.floor(origVertCount * ((100 - reductionPercent) / 100)));
                     const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
-                    currentMesh.geometry.dispose();
-                    currentMesh.geometry = simplifiedGeo;
-                    currentMesh.geometry.computeVertexNormals();
-                    
+                    currentMesh.geometry.dispose(); currentMesh.geometry = simplifiedGeo; currentMesh.geometry.computeVertexNormals();
                     updateStats(origVertCount, simplifiedGeo.attributes.position.count);
-                } catch (err) {
-                    console.error(err);
-                    alert("Gagal memproses. Coba kurangi persentase.");
-                } finally {
-                    hideLoading();
-                }
+                } catch (err) { console.error(err); alert("Gagal memproses."); } finally { hideLoading(); }
             }, 60);
         }
 
         function resetToOriginal() {
             if (!originalGeometry || !currentMesh) return;
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
-
-            currentMesh.geometry.dispose();
-            currentMesh.geometry = originalGeometry.clone();
-            slider.value = 50;
-            percentDisplay.textContent = "50%";
+            currentMesh.geometry.dispose(); currentMesh.geometry = originalGeometry.clone();
+            slider.value = 50; percentDisplay.textContent = "50%";
             updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
         }
 
-        function resetToolButtons() {
-            [toolView, toolMove, toolRotate, toolScale].forEach(btn => btn.classList.remove('active-tool'));
-        }
+        function resetToolButtons() { [toolView, toolMove, toolRotate, toolScale].forEach(btn => btn.classList.remove('active-tool')); }
 
         function setupUIEventListeners() {
-            // SLIDER & ACTION BUTTONS
             slider.addEventListener('input', (e) => percentDisplay.textContent = `${e.target.value}%`);
-            slider.addEventListener('change', applySimplification);
-            applyBtn.addEventListener('click', applySimplification);
-            resetMeshBtn.addEventListener('click', resetToOriginal);
+            slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             
-            // UNDO BUTTON & SHORTCUT
             undoBtn.addEventListener('click', performUndo);
-            window.addEventListener('keydown', (e) => {
-                if (e.ctrlKey && e.key === 'z') performUndo();
-            });
+            window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
 
-            // TRANSFORM TOOLS
-            toolView.addEventListener('click', () => {
-                resetToolButtons(); toolView.classList.add('active-tool'); transformControl.detach();
-            });
-            toolMove.addEventListener('click', () => {
-                resetToolButtons(); toolMove.classList.add('active-tool'); transformControl.setMode('translate');
-                if (currentMesh) transformControl.attach(currentMesh);
-            });
-            toolRotate.addEventListener('click', () => {
-                resetToolButtons(); toolRotate.classList.add('active-tool'); transformControl.setMode('rotate');
-                if (currentMesh) transformControl.attach(currentMesh);
-            });
-            toolScale.addEventListener('click', () => {
-                resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale');
-                if (currentMesh) transformControl.attach(currentMesh);
-            });
+            toolView.addEventListener('click', () => { resetToolButtons(); toolView.classList.add('active-tool'); transformControl.detach(); });
+            toolMove.addEventListener('click', () => { resetToolButtons(); toolMove.classList.add('active-tool'); transformControl.setMode('translate'); if (currentMesh) transformControl.attach(currentMesh); });
+            toolRotate.addEventListener('click', () => { resetToolButtons(); toolRotate.classList.add('active-tool'); transformControl.setMode('rotate'); if (currentMesh) transformControl.attach(currentMesh); });
+            toolScale.addEventListener('click', () => { resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale'); if (currentMesh) transformControl.attach(currentMesh); });
 
-            // VIEW TOGGLES
             textureBtn.addEventListener('click', () => {
-                if (!currentMesh) return;
-                isTextureOn = !isTextureOn;
-                textureBtn.dataset.active = isTextureOn;
+                if (!currentMesh) return; isTextureOn = !isTextureOn; textureBtn.dataset.active = isTextureOn;
                 textureBtn.style.background = isTextureOn ? '#0284c7' : '#27272a';
-                currentMesh.material = isTextureOn ? loadedMaterial : defaultMaterial;
-                applyCurrentMaterialStates(); 
+                currentMesh.material = isTextureOn ? loadedMaterial : defaultMaterial; applyCurrentMaterialStates(); 
             });
             wireframeBtn.addEventListener('click', () => {
-                const newState = wireframeBtn.dataset.active !== 'true';
-                wireframeBtn.dataset.active = newState;
-                wireframeBtn.style.background = newState ? '#0284c7' : '#27272a';
-                applyCurrentMaterialStates();
+                wireframeBtn.dataset.active = wireframeBtn.dataset.active !== 'true';
+                wireframeBtn.style.background = wireframeBtn.dataset.active === 'true' ? '#0284c7' : '#27272a'; applyCurrentMaterialStates();
             });
             shadingBtn.addEventListener('click', () => {
-                const newState = shadingBtn.dataset.active !== 'true';
-                shadingBtn.dataset.active = newState;
-                shadingBtn.style.background = newState ? '#0284c7' : '#27272a';
-                applyCurrentMaterialStates();
+                shadingBtn.dataset.active = shadingBtn.dataset.active !== 'true';
+                shadingBtn.style.background = shadingBtn.dataset.active === 'true' ? '#0284c7' : '#27272a'; applyCurrentMaterialStates();
             });
 
-            // FILE UPLOAD
             fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+                const file = e.target.files[0]; if (!file) return;
                 showLoading("Membaca file " + file.name + "...");
-                const filename = file.name.toLowerCase();
                 const fileURL = URL.createObjectURL(file);
-                const onError = (err) => { alert("Gagal membaca file!"); hideLoading(); };
-                
                 const extractAndSetMesh = (object) => {
                     let foundMesh = null;
                     const root = object.scene || object;
                     root.traverse((child) => { if (child.isMesh && !foundMesh) foundMesh = child; });
-                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material);
-                    else alert("Tidak ditemukan Mesh 3D.");
+                    if (foundMesh && foundMesh.geometry) setMesh(foundMesh.geometry.clone(), foundMesh.material); else alert("Tidak ditemukan Mesh 3D.");
                     hideLoading(); URL.revokeObjectURL(fileURL);
                 };
-
-                if (filename.endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                else if (filename.endsWith('.glb') || filename.endsWith('.gltf')) new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                else if (filename.endsWith('.fbx')) new FBXLoader().load(fileURL, extractAndSetMesh, undefined, onError);
-                else { alert("Format tidak didukung!"); hideLoading(); URL.revokeObjectURL(fileURL); }
+                if (file.name.toLowerCase().endsWith('.obj')) new OBJLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
+                else if (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf')) new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
+                else if (file.name.toLowerCase().endsWith('.fbx')) new FBXLoader().load(fileURL, extractAndSetMesh, undefined, () => { alert("Gagal membaca file!"); hideLoading(); });
                 e.target.value = '';
             });
 
             resetDemoBtn.addEventListener('click', loadDemoMesh);
 
-            // EXPORT
             exportObjBtn.addEventListener('click', () => {
-                if (!currentMesh) return;
-                const exporter = new OBJExporter();
-                downloadFile(exporter.parse(currentMesh), 'text/plain', `simplified_${slider.value}percent.obj`);
+                if (!currentMesh) return; const exporter = new OBJExporter(); downloadFile(exporter.parse(currentMesh), 'text/plain', `raw_${slider.value}percent.obj`);
             });
 
+            // --- EKSPOR DENGAN GLTF-TRANSFORM COMPRESSOR ---
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
-                showLoading("Mengekspor GLB...");
+                showLoading("Mengompresi GLB...");
+                
                 const prevMode = toolView.className === 'active-tool' ? 'view' : transformControl.mode;
-                transformControl.detach();
-
+                transformControl.detach(); // Sembunyikan garis gizmo
                 const tempMaterial = currentMesh.material;
-                currentMesh.material = loadedMaterial;
+                currentMesh.material = loadedMaterial; // Kembalikan tekstur asli
 
-                new GLTFExporter().parse(
+                const exporter = new GLTFExporter();
+                exporter.parse(
                     scene, 
-                    function (gltfArrayBuffer) {
-                        currentMesh.material = tempMaterial;
-                        if (prevMode !== 'view') transformControl.attach(currentMesh);
-                        downloadFile(gltfArrayBuffer, 'application/octet-stream', `simplified_${slider.value}percent.glb`);
-                        hideLoading();
+                    async function (gltfArrayBuffer) {
+                        try {
+                            // 1. Inisiasi WebIO dari glTF-Transform
+                            const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
+                            
+                            // 2. Baca buffer raw dari Three.js
+                            const document = await io.readBinary(new Uint8Array(gltfArrayBuffer));
+                            
+                            // 3. Terapkan algoritma kompresi
+                            await document.transform(
+                                dedup(),     // Menghapus data/material duplikat
+                                weld(),      // Menyambung ulang polygon yang terpisah (Indexing)
+                                quantize()   // Kuantisasi angka desimal untuk memangkas ukuran
+                            );
+                            
+                            // 4. Jadikan file Biner kembali
+                            const compressedGlbBuffer = await io.writeBinary(document);
+                            
+                            // 5. Download hasil akhir yang sudah dikompres
+                            downloadFile(compressedGlbBuffer, 'application/octet-stream', `optimized_${slider.value}percent.glb`);
+                        } catch (error) {
+                            console.error("Kompresi Gagal:", error);
+                            alert("Gagal melakukan kompresi data.");
+                        } finally {
+                            // Kembalikan UI seperti semula
+                            currentMesh.material = tempMaterial;
+                            if (prevMode !== 'view') transformControl.attach(currentMesh);
+                            hideLoading();
+                        }
                     },
                     function (error) {
                         currentMesh.material = tempMaterial;
                         if (prevMode !== 'view') transformControl.attach(currentMesh);
-                        console.error(error); alert("Gagal mengekspor GLB."); hideLoading();
+                        console.error(error); alert("Gagal mengekspor GLB mentah."); hideLoading();
                     },
-                    { binary: true }
+                    { binary: true } // Opsi awal ThreeJS
                 );
             });
         }
