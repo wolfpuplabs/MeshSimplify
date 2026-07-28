@@ -199,8 +199,9 @@
             <!-- Upload & Demo -->
             <div class="section">
                 <div class="btn-group" style="grid-template-columns: 1fr;">
-                    <label class="file-btn" style="font-size: 0.85rem;" data-i18n="import">
-                        <span style="margin-right:8px; font-size:1.1rem;">+</span> Import Model 3D (.OBJ, .GLB, .FBX)
+                    <!-- PERBAIKAN: data-i18n dipindah ke dalam tag <span> agar tidak menimpa elemen input -->
+                    <label class="file-btn" style="font-size: 0.85rem;">
+                        <span data-i18n="import"><span style="margin-right:8px; font-size:1.1rem;">+</span> Import Model 3D (.OBJ, .GLB, .FBX)</span>
                         <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
                     </label>
                     <button id="resetDemoBtn" data-i18n="loadDemo">Load Sample Model</button>
@@ -370,15 +371,13 @@
             currentLang = currentLang === 'id' ? 'en' : 'id';
             langToggleBtn.innerText = currentLang.toUpperCase();
             
-            // Update all static texts
+            // Update text elements carefully
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                // Use innerHTML to preserve the <span> tag in the import button
                 if(i18n[currentLang][key]) {
                     el.innerHTML = i18n[currentLang][key];
                 }
             });
-            // Update undo text manually if there's history
             updateUndoUI();
         });
 
