@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Ultimate Compression)</title>
+    <title>3D Mesh Simplifier (Ultimate Compression Fixed)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
         body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
@@ -73,7 +73,7 @@
 
     <div id="ui-panel">
         <h2>Mesh Simplifier Pro</h2>
-        <p class="subtitle">MAX Compression (Texture Limit & Meshopt)</p>
+        <p class="subtitle">MAX Compression (Fixed)</p>
 
         <!-- Upload & Demo -->
         <div class="section">
@@ -339,7 +339,7 @@
                 if (!currentMesh) return; const exporter = new OBJExporter(); downloadFile(exporter.parse(currentMesh), 'text/plain', `raw_${slider.value}percent.obj`);
             });
 
-            // --- EKSPOR DENGAN TEKSTUR RESIZER DAN MESHOPT ---
+            // --- EKSPOR DENGAN TEKSTUR RESIZER DAN MESHOPT (FIXED) ---
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 showLoading("MAX Compression berjalan (Tunggu sebentar)...");
@@ -363,16 +363,19 @@
                                 EXTMeshoptCompression
                             ]);
                             
+                            // PERBAIKAN UTAMA: Daftarkan encoder ke sistem IO agar bisa menulis file
+                            io.registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
+                            
                             const document = await io.readBinary(new Uint8Array(gltfArrayBuffer));
                             
                             // 2. Terapkan algoritma kompresi super ketat
                             await document.transform(
-                                prune(),     // Buang node yatim piatu
-                                dedup(),     // Hapus duplikasi data
+                                prune(),     
+                                dedup(),     
                                 weld({ tolerance: 0.0001 }), 
-                                reorder({ encoder: MeshoptEncoder }), // Reorder untuk efisiensi kompresi
+                                reorder({ encoder: MeshoptEncoder }),
                                 quantize({
-                                    quantizePosition: 12, // Kuantisasi desimal ketat
+                                    quantizePosition: 12, 
                                     quantizeTexcoord: 10,
                                     quantizeColor: 8,
                                     quantizeNormal: 8
@@ -388,7 +391,9 @@
                             
                             downloadFile(compressedGlbBuffer, 'application/octet-stream', `MAX_${slider.value}percent.glb`);
                         } catch (error) {
-                            console.error("Kompresi Gagal:", error); alert("Gagal melakukan kompresi data.");
+                            console.error("Kompresi Gagal:", error); 
+                            // Menampilkan detail error jika terjadi lagi
+                            alert("Gagal melakukan kompresi data: " + error.message); 
                         } finally {
                             currentMesh.material = tempMaterial;
                             if (prevMode !== 'view') transformControl.attach(currentMesh);
@@ -399,7 +404,6 @@
                         currentMesh.material = tempMaterial; if (prevMode !== 'view') transformControl.attach(currentMesh);
                         console.error(error); alert("Gagal mengekspor GLB mentah."); hideLoading();
                     },
-                    // KUNCI UTAMA (TEKSTUR LIMITER):
                     { binary: true, maxTextureSize: 1024 } 
                 );
             });
