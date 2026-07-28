@@ -2,26 +2,44 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mesh Simplifier (Safe Compression)</title>
+    <!-- Mencegah layar web ikut ter-zoom saat merotasi kamera 3D di HP -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Mesh Simplifier (Responsive)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
-        body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
+        body { overflow: hidden; background-color: #121214; color: #e4e4e7; touch-action: none; /* Mencegah pull-to-refresh di HP */ }
         #canvas-container { width: 100vw; height: 100vh; }
+        
+        /* Base Panel Style (Desktop & Tablet) */
         #ui-panel {
             position: absolute; top: 20px; left: 20px; width: 340px;
             background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px;
-            padding: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); z-index: 10;
-            max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); z-index: 10;
+            display: flex; flex-direction: column; max-height: 90vh;
+            transition: all 0.3s ease;
         }
         
-        #ui-panel::-webkit-scrollbar { width: 6px; }
-        #ui-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-        #ui-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        /* Header Panel dengan tombol Minimize */
+        .panel-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            padding: 20px 20px 10px 20px;
+        }
+        #toggleUiBtn {
+            background: transparent; border: none; color: #a1a1aa; font-size: 1.2rem;
+            cursor: pointer; padding: 0 5px; margin-top: -5px;
+        }
+        #toggleUiBtn:hover { color: #fff; background: transparent; border: none; }
 
-        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 6px; color: #f4f4f5; }
-        p.subtitle { font-size: 0.8rem; color: #a1a1aa; margin-bottom: 16px; }
+        #ui-content { padding: 0 20px 20px 20px; overflow-y: auto; flex: 1; }
+        
+        /* Custom Scrollbar */
+        #ui-content::-webkit-scrollbar { width: 6px; }
+        #ui-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        #ui-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
+        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 4px; color: #f4f4f5; }
+        p.subtitle { font-size: 0.8rem; color: #38bdf8; margin-bottom: 5px; }
         .section { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: #d4d4d8; }
@@ -62,6 +80,31 @@
             border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ==================================================
+           MEDIA QUERIES (RESPONSIVE KHUSUS SMARTPHONE) 
+           ================================================== */
+        @media (max-width: 768px) {
+            #ui-panel {
+                top: auto; 
+                bottom: 0; 
+                left: 0; 
+                width: 100vw; 
+                max-height: 55vh; /* Menyisakan 45% layar atas untuk model 3D */
+                border-radius: 20px 20px 0 0; /* Sudut melengkung hanya di atas */
+                border-left: none; border-right: none; border-bottom: none;
+            }
+            .panel-header { padding: 15px 15px 10px 15px; }
+            #ui-content { padding: 0 15px 15px 15px; }
+            
+            /* Pada layar sempit, tumpuk tombol transformasi menjadi 2 baris x 2 kolom */
+            .btn-group-4 { grid-template-columns: 1fr 1fr; gap: 6px; }
+            
+            #loading-overlay {
+                top: auto; bottom: 60vh; right: 50%; transform: translateX(50%);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            }
+        }
     </style>
 </head>
 <body>
@@ -72,68 +115,75 @@
     </div>
 
     <div id="ui-panel">
-        <h2>Mesh Simplifier Pro</h2>
-        <p class="subtitle">Safe MAX Compression (Universal)</p>
+        <div class="panel-header">
+            <div>
+                <h2>Mesh Simplifier Pro</h2>
+                <p class="subtitle">Responsive & Safe Compression</p>
+            </div>
+            <button id="toggleUiBtn" title="Minimize/Maximize UI">▼</button>
+        </div>
 
-        <!-- Upload & Demo -->
-        <div class="section">
-            <div class="btn-group" style="grid-template-columns: 1fr;">
-                <label class="file-btn" style="font-size: 0.825rem;">
-                    📁 Upload Model (.OBJ, .GLB, .FBX)
-                    <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
+        <div id="ui-content">
+            <!-- Upload & Demo -->
+            <div class="section">
+                <div class="btn-group" style="grid-template-columns: 1fr;">
+                    <label class="file-btn" style="font-size: 0.825rem;">
+                        📁 Upload Model (.OBJ, .GLB, .FBX)
+                        <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
+                    </label>
+                    <button id="resetDemoBtn" style="font-size: 0.825rem;">🔄 Load Sample Demo</button>
+                </div>
+            </div>
+
+            <!-- Transform Controls -->
+            <div class="section">
+                <div class="header-group">
+                    <label style="margin: 0;">Alat Transformasi</label>
+                    <button id="undoBtn" style="padding: 4px 8px; background: #b91c1c; border-color: #991b1b;" disabled>↩ Undo</button>
+                </div>
+                <div class="btn-group-4">
+                    <button id="toolView" class="active-tool" title="View Only">View</button>
+                    <button id="toolMove" title="Geser Objek">Geser</button>
+                    <button id="toolRotate" title="Putar Objek">Putar</button>
+                    <button id="toolScale" title="Ubah Skala">Skala</button>
+                </div>
+            </div>
+
+            <!-- Percentage -->
+            <div class="section">
+                <label>
+                    <span>Pengurangan Polygon</span>
+                    <span class="slider-val" id="percentDisplay">50%</span>
                 </label>
-                <button id="resetDemoBtn" style="font-size: 0.825rem;">🔄 Load Sample Demo</button>
+                <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
+                <div class="btn-group">
+                    <button id="applyBtn" class="primary">Terapkan</button>
+                    <button id="resetMeshBtn">Reset ke Asli</button>
+                </div>
             </div>
-        </div>
 
-        <!-- Transform Controls -->
-        <div class="section">
-            <div class="header-group">
-                <label style="margin: 0;">Alat Transformasi</label>
-                <button id="undoBtn" style="padding: 4px 8px; background: #b91c1c; border-color: #991b1b;" disabled>↩ Undo</button>
+            <!-- View Settings -->
+            <div class="section">
+                <div class="btn-group-3">
+                    <button id="textureBtn" data-active="true" style="background: #0284c7;">Tekstur</button>
+                    <button id="wireframeBtn" data-active="false">Wireframe</button>
+                    <button id="shadingBtn" data-active="false">Smooth</button>
+                </div>
             </div>
-            <div class="btn-group-4">
-                <button id="toolView" class="active-tool" title="View Only">View</button>
-                <button id="toolMove" title="Geser Objek">Geser</button>
-                <button id="toolRotate" title="Putar Objek">Putar</button>
-                <button id="toolScale" title="Ubah Skala">Skala</button>
-            </div>
-        </div>
 
-        <!-- Percentage -->
-        <div class="section">
-            <label>
-                <span>Pengurangan Polygon</span>
-                <span class="slider-val" id="percentDisplay">50%</span>
-            </label>
-            <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
-            <div class="btn-group">
-                <button id="applyBtn" class="primary">Terapkan</button>
-                <button id="resetMeshBtn">Reset ke Asli</button>
-            </div>
-        </div>
-
-        <!-- View Settings -->
-        <div class="section">
-            <div class="btn-group-3">
-                <button id="textureBtn" data-active="true" style="background: #0284c7;">Tekstur</button>
-                <button id="wireframeBtn" data-active="false">Wireframe</button>
-                <button id="shadingBtn" data-active="false">Smooth</button>
-            </div>
-        </div>
-
-        <!-- Stats & Export -->
-        <div class="section">
-            <div class="stats-box">
-                <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
-                <div class="stats-row"><span>Vertex Hasil:</span><span class="stats-val" id="currVerts">0</span></div>
-                <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
-            </div>
-            
-            <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Optimized):</label>
-            <div class="btn-group">
-                <button id="exportObjBtn" class="success">💾 Raw .OBJ</button>
-                <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Safe .GLB</button>
+            <!-- Stats & Export -->
+            <div class="section">
+                <div class="stats-box">
+                    <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
+                    <div class="stats-row"><span>Vertex Hasil:</span><span class="stats-val" id="currVerts">0</span></div>
+                    <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
+                </div>
+                
+                <label style="margin-top: 12px; margin-bottom: 4px;">Ekspor (Optimized):</label>
+                <div class="btn-group">
+                    <button id="exportObjBtn" class="success">💾 Raw .OBJ</button>
+                    <button id="exportGlbBtn" class="success" style="background:#0d9488; border-color:#0f766e;">📦 Safe .GLB</button>
+                </div>
             </div>
         </div>
     </div>
@@ -163,7 +213,6 @@
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
         
-        // --- glTF-Transform Imports (Tanpa Meshopt) ---
         import { WebIO } from '@gltf-transform/core';
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
         import { weld, quantize, dedup, prune } from '@gltf-transform/functions';
@@ -187,6 +236,16 @@
         const fileInput = document.getElementById('fileInput'); const resetDemoBtn = document.getElementById('resetDemoBtn');
         const exportObjBtn = document.getElementById('exportObjBtn'); const exportGlbBtn = document.getElementById('exportGlbBtn');
         const loadingOverlay = document.getElementById('loading-overlay'); const loadingText = document.getElementById('loading-text');
+
+        // Fitur Minimize/Maximize UI Panel
+        const toggleUiBtn = document.getElementById('toggleUiBtn');
+        const uiContent = document.getElementById('ui-content');
+        let isUiExpanded = true;
+        toggleUiBtn.addEventListener('click', () => {
+            isUiExpanded = !isUiExpanded;
+            uiContent.style.display = isUiExpanded ? 'block' : 'none';
+            toggleUiBtn.innerText = isUiExpanded ? '▼' : '▲';
+        });
 
         function init() {
             const container = document.getElementById('canvas-container');
@@ -337,7 +396,6 @@
                 if (!currentMesh) return; const exporter = new OBJExporter(); downloadFile(exporter.parse(currentMesh), 'text/plain', `raw_${slider.value}percent.obj`);
             });
 
-            // --- EKSPOR DENGAN "SAFE" COMPRESSION (UNIVERSAL) ---
             exportGlbBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 showLoading("Menyiapkan Kompresi Aman...");
@@ -355,13 +413,12 @@
                             const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                             const document = await io.readBinary(new Uint8Array(gltfArrayBuffer));
                             
-                            // Transformasi aman: Tanpa Meshopt, hanya membersihkan & merampingkan data
                             await document.transform(
                                 prune(),     
                                 dedup(),     
                                 weld({ tolerance: 0.0001 }), 
                                 quantize({
-                                    quantizePosition: 14, // Presisi aman
+                                    quantizePosition: 14, 
                                     quantizeTexcoord: 12,
                                     quantizeColor: 8,
                                     quantizeNormal: 8
@@ -384,7 +441,6 @@
                         currentMesh.material = tempMaterial; if (prevMode !== 'view') transformControl.attach(currentMesh);
                         console.error(error); alert("Gagal mengekspor GLB mentah."); hideLoading();
                     },
-                    // KUNCI: Tetap me-limit ukuran tekstur untuk menghemat belasan Megabyte
                     { binary: true, maxTextureSize: 1024 } 
                 );
             });
@@ -405,7 +461,13 @@
 
         function showLoading(text) { loadingText.textContent = text; loadingOverlay.style.display = 'flex'; }
         function hideLoading() { loadingOverlay.style.display = 'none'; }
-        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        
+        function onWindowResize() { 
+            camera.aspect = window.innerWidth / window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        }
+        
         function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
 
         init();
