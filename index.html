@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Mesh Simplifier (Multi-format)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+        body { overflow: hidden; background-color: #121214; color: #e4e4e7; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px; width: 340px;
+            background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px;
+            padding: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); z-index: 10;
+        }
+        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 6px; color: #f4f4f5; }
+        p.subtitle { font-size: 0.8rem; color: #a1a1aa; margin-bottom: 16px; }
+        .section { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+        .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: #d4d4d8; }
+        .slider-val { color: #38bdf8; font-weight: 600; }
+        input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: #27272a; outline: none; accent-color: #38bdf8; cursor: pointer; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        button, label.file-btn {
+            display: flex; align-items: center; justify-content: center; padding: 9px 12px;
+            background: #27272a; color: #f4f4f5; border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; font-size: 0.825rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease; text-align: center;
+        }
+        button:hover, label.file-btn:hover { background: #3f3f46; border-color: rgba(255, 255, 255, 0.2); }
+        button.primary { background: #0284c7; border-color: #0369a1; }
+        button.primary:hover { background: #0369a1; }
+        button.success { background: #059669; border-color: #047857; grid-column: span 2; }
+        button.success:hover { background: #047857; }
+        input[type="file"] { display: none; }
+        .stats-box { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.6; }
+        .stats-row { display: flex; justify-content: space-between; }
+        .stats-val { font-family: monospace; font-weight: 600; color: #38bdf8; }
+        #loading-overlay {
+            position: absolute; top: 20px; right: 20px; background: rgba(24, 24, 27, 0.9);
+            border: 1px solid #0284c7; color: #38bdf8; padding: 8px 16px; border-radius: 20px;
+            font-size: 0.8rem; font-weight: 500; display: none; align-items: center; gap: 8px;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #38bdf8; border-top-color: transparent;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <span id="loading-text">Memproses Mesh...</span>
+    </div>
+
+    <div id="ui-panel">
+        <h2>Mesh Simplifier</h2>
+        <p class="subtitle">Mendukung file .OBJ, .GLB, dan .FBX.</p>
+
+        <!-- Section 1: Upload / Demo -->
+        <div class="section">
+            <div class="btn-group" style="grid-template-columns: 1fr;">
+                <label class="file-btn">
+                    📁 Upload Model 3D
+                    <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
+                </label>
+                <button id="resetDemoBtn">🔄 Load Sample Demo Mesh</button>
+            </div>
+        </div>
+
+        <!-- Section 2: Percentage Control -->
+        <div class="section">
+            <label>
+                <span>Pengurangan Polygon</span>
+                <span class="slider-val" id="percentDisplay">50%</span>
+            </label>
+            <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
+            
+            <div class="btn-group">
+                <button id="applyBtn" class="primary">Terapkan</button>
+                <button id="resetMeshBtn">Reset ke Asli</button>
+            </div>
+        </div>
+
+        <!-- Section 3: View Toggles -->
+        <div class="section">
+            <div class="btn-group">
+                <button id="wireframeBtn">Toggle Wireframe</button>
+                <button id="shadingBtn">Flat / Smooth</button>
+            </div>
+        </div>
+
+        <!-- Section 4: Statistics & Export -->
+        <div class="section">
+            <div class="stats-box">
+                <div class="stats-row"><span>Vertex Asli:</span><span class="stats-val" id="origVerts">0</span></div>
+                <div class="stats-row"><span>Vertex Hasil:</span><span class="stats-val" id="currVerts">0</span></div>
+                <div class="stats-row"><span>Total Reduksi:</span><span class="stats-val" id="reducedPct">0%</span></div>
+            </div>
+            <div class="btn-group" style="margin-top: 10px;">
+                <button id="exportBtn" class="success">💾 Export Hasil (.OBJ)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+        import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+
+        // --- App State ---
+        let scene, camera, renderer, controls;
+        let currentMesh = null;
+        let originalGeometry = null; 
+        const modifier = new SimplifyModifier();
+
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x38bdf8,
+            wireframe: false,
+            roughness: 0.4,
+            metalness: 0.1,
+            side: THREE.DoubleSide,
+            flatShading: false
+        });
+
+        const slider = document.getElementById('reductionSlider');
+        const percentDisplay = document.getElementById('percentDisplay');
+        const applyBtn = document.getElementById('applyBtn');
+        const resetMeshBtn = document.getElementById('resetMeshBtn');
+        const wireframeBtn = document.getElementById('wireframeBtn');
+        const shadingBtn = document.getElementById('shadingBtn');
+        const fileInput = document.getElementById('fileInput');
+        const resetDemoBtn = document.getElementById('resetDemoBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x121214);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 2, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambient);
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(5, 10, 7);
+            scene.add(dirLight1);
+            const dirLight2 = new THREE.DirectionalLight(0x0284c7, 0.5);
+            dirLight2.position.set(-5, -5, -5);
+            scene.add(dirLight2);
+
+            const grid = new THREE.GridHelper(10, 20, 0x3f3f46, 0x27272a);
+            grid.position.y = -1.2;
+            scene.add(grid);
+
+            loadDemoMesh();
+            window.addEventListener('resize', onWindowResize);
+            setupUIEventListeners();
+            animate();
+        }
+
+        function setMesh(geometry) {
+            showLoading("Menyiapkan mesh...");
+            setTimeout(() => {
+                if (currentMesh) {
+                    scene.remove(currentMesh);
+                    currentMesh.geometry.dispose();
+                }
+
+                // Konversi geometri ke BufferGeometry standar jika diperlukan
+                if (!geometry.isBufferGeometry) {
+                    geometry = new THREE.BufferGeometry().fromGeometry(geometry);
+                }
+
+                geometry.center();
+                geometry.computeVertexNormals();
+
+                geometry.computeBoundingSphere();
+                const radius = geometry.boundingSphere.radius;
+                const scale = 1.8 / (radius || 1);
+
+                originalGeometry = geometry.clone();
+
+                currentMesh = new THREE.Mesh(geometry, material);
+                currentMesh.scale.set(scale, scale, scale);
+                scene.add(currentMesh);
+
+                updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
+                hideLoading();
+            }, 50);
+        }
+
+        function loadDemoMesh() {
+            const demoGeo = new THREE.TorusKnotGeometry(1, 0.35, 128, 32);
+            setMesh(demoGeo);
+        }
+
+        function applySimplification() {
+            if (!originalGeometry || !currentMesh) return;
+            const reductionPercent = parseInt(slider.value);
+            showLoading(`Menyederhanakan (${reductionPercent}%)...`);
+
+            setTimeout(() => {
+                try {
+                    const origVertCount = originalGeometry.attributes.position.count;
+                    const keepRatio = (100 - reductionPercent) / 100;
+                    const targetCount = Math.max(4, Math.floor(origVertCount * keepRatio));
+
+                    const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
+                    currentMesh.geometry.dispose();
+                    currentMesh.geometry = simplifiedGeo;
+                    currentMesh.geometry.computeVertexNormals();
+
+                    updateStats(origVertCount, simplifiedGeo.attributes.position.count);
+                } catch (err) {
+                    console.error("Error simplifikasi:", err);
+                    alert("Gagal memproses. Coba kurangi persentase atau pastikan model tidak rusak.");
+                } finally {
+                    hideLoading();
+                }
+            }, 60);
+        }
+
+        function resetToOriginal() {
+            if (!originalGeometry || !currentMesh) return;
+            currentMesh.geometry.dispose();
+            currentMesh.geometry = originalGeometry.clone();
+            slider.value = 50;
+            percentDisplay.textContent = "50%";
+            updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
+        }
+
+        function setupUIEventListeners() {
+            slider.addEventListener('input', (e) => percentDisplay.textContent = `${e.target.value}%`);
+            slider.addEventListener('change', applySimplification);
+            applyBtn.addEventListener('click', applySimplification);
+            resetMeshBtn.addEventListener('click', resetToOriginal);
+
+            wireframeBtn.addEventListener('click', () => {
+                material.wireframe = !material.wireframe;
+                wireframeBtn.style.background = material.wireframe ? '#0284c7' : '#27272a';
+            });
+
+            shadingBtn.addEventListener('click', () => {
+                material.flatShading = !material.flatShading;
+                material.needsUpdate = true;
+                shadingBtn.style.background = material.flatShading ? '#0284c7' : '#27272a';
+            });
+
+            // MULTI-FORMAT UPLOAD HANDLER
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                showLoading("Membaca file " + file.name + "...");
+                
+                const filename = file.name.toLowerCase();
+                const fileURL = URL.createObjectURL(file); // Buat URL virtual untuk file
+
+                const onError = (err) => {
+                    console.error(err);
+                    alert("Gagal membaca file! Pastikan format sesuai.");
+                    hideLoading();
+                };
+
+                // Fungsi untuk mengambil Mesh pertama dari hirarki (FBX/GLTF sering berbentuk grup)
+                const extractAndSetMesh = (object) => {
+                    let foundMesh = null;
+                    const root = object.scene || object; // GLTF menggunakan object.scene
+                    
+                    root.traverse((child) => {
+                        if (child.isMesh && !foundMesh) {
+                            foundMesh = child;
+                        }
+                    });
+
+                    if (foundMesh && foundMesh.geometry) {
+                        setMesh(foundMesh.geometry.clone());
+                    } else {
+                        alert("Tidak ditemukan Mesh 3D di dalam file ini.");
+                        hideLoading();
+                    }
+                    URL.revokeObjectURL(fileURL); // Bersihkan memori URL
+                };
+
+                // Tentukan loader berdasarkan ekstensi file
+                if (filename.endsWith('.obj')) {
+                    new OBJLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                } else if (filename.endsWith('.glb') || filename.endsWith('.gltf')) {
+                    new GLTFLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                } else if (filename.endsWith('.fbx')) {
+                    new FBXLoader().load(fileURL, extractAndSetMesh, undefined, onError);
+                } else {
+                    alert("Format tidak didukung!");
+                    hideLoading();
+                    URL.revokeObjectURL(fileURL);
+                }
+                
+                // Reset value input file agar bisa upload file yang sama lagi jika perlu
+                e.target.value = '';
+            });
+
+            resetDemoBtn.addEventListener('click', loadDemoMesh);
+
+            exportBtn.addEventListener('click', () => {
+                if (!currentMesh) return;
+                const exporter = new OBJExporter();
+                const result = exporter.parse(currentMesh);
+                const blob = new Blob([result], { type: 'text/plain' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `simplified_${slider.value}percent.obj`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+            });
+        }
+
+        function updateStats(origCount, currCount) {
+            document.getElementById('origVerts').textContent = origCount.toLocaleString();
+            document.getElementById('currVerts').textContent = currCount.toLocaleString();
+            const pct = origCount > 0 ? Math.round(((origCount - currCount) / origCount) * 100) : 0;
+            document.getElementById('reducedPct').textContent = `${pct}%`;
+        }
+
+        function showLoading(text) { loadingText.textContent = text; loadingOverlay.style.display = 'flex'; }
+        function hideLoading() { loadingOverlay.style.display = 'none'; }
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+
+        init();
+    </script>
+</body>
+</html>
