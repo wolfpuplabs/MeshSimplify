@@ -13,9 +13,6 @@
     <!-- Import pustaka model-viewer untuk fitur AR -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 
-    <!-- PENTING: Global Script untuk menghindari blokir WASM di iPad/Safari -->
-    <script src="https://unpkg.com/meshoptimizer@0.18.1/meshopt_simplifier.js"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
@@ -362,20 +359,36 @@
 
     <div id="canvas-container"></div>
 
-    <script type="module">
-        // MENGGUNAKAN ESM.SH SEBAGAI PENGGANTI IMPORTMAP AGAR SUPPORT NITROIDE/WEB IDE LAINNYA
-        import * as THREE from 'https://esm.sh/three@0.160.0';
-        import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-        import { TransformControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/TransformControls.js';
-        import { OBJLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
-        import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-        import { FBXLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
-        import { OBJExporter } from 'https://esm.sh/three@0.160.0/examples/jsm/exporters/OBJExporter.js';
-        import { GLTFExporter } from 'https://esm.sh/three@0.160.0/examples/jsm/exporters/GLTFExporter.js';
+    <!-- PENTING: Kembali menggunakan Import Map Resmi (Dukungan Vercel & Standard Modern Browser) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
+                "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
+                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
+                "meshoptimizer": "https://cdn.jsdelivr.net/npm/meshoptimizer@0.21.0/meshopt_simplifier.module.js"
+            }
+        }
+    </script>
 
-        import { WebIO } from 'https://esm.sh/@gltf-transform/core@3.10.1';
-        import { KHRONOS_EXTENSIONS } from 'https://esm.sh/@gltf-transform/extensions@3.10.1';
-        import { weld, quantize, dedup, prune, simplify } from 'https://esm.sh/@gltf-transform/functions@3.10.1';
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+        import { WebIO } from '@gltf-transform/core';
+        import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
+        import { weld, quantize, dedup, prune, simplify } from '@gltf-transform/functions';
+        
+        // Memuat MeshOptimizer via ESM Resmi
+        import * as MeshOpt from 'meshoptimizer';
 
         const i18n = {
             id: {
@@ -665,10 +678,11 @@
             
             setTimeout(async () => {
                 try {
-                    const simplifier = window.meshoptSimplifier;
+                    // Deteksi nama variabel ekspor yang benar dari MeshOptimizer
+                    const simplifier = MeshOpt.meshoptSimplifier || MeshOpt.MeshoptSimplifier;
                     
                     if (!simplifier) {
-                        throw new Error("Skrip kompresor belum dimuat sepenuhnya. Pastikan internet menyala.");
+                        throw new Error("Modul meshoptimizer gagal dimuat oleh browser.");
                     }
 
                     await simplifier.ready;
@@ -684,9 +698,9 @@
                                 const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                                 const document = await io.readBinary(new Uint8Array(gltfBuffer));
                                 
+                                // Toleransi disetel ke 0.1 (10%) untuk mengakomodasi slider agresif tanpa merusak struktur utama
                                 await document.transform(
                                     weld({ tolerance: 0.0001 }), 
-                                    // Toleransi error ditingkatkan ke 0.1 (10%)
                                     simplify({ simplifier: simplifier, ratio: targetRatio, error: 0.1 })
                                 );
                                 
@@ -714,18 +728,18 @@
                                     hideLoading();
                                 }, undefined, (err) => {
                                     console.error(err);
-                                    alert("Gagal merender hasil: " + err.message);
+                                    alert("Gagal merender hasil kompresi: " + err.message);
                                     hideLoading();
                                 });
                             } catch(err) {
                                 console.error(err);
-                                alert("Gagal memproses Meshoptimizer: " + err.message);
+                                alert("Proses kompresi dihentikan: " + err.message);
                                 hideLoading();
                             }
                         },
                         function(err) { 
                             console.error(err); 
-                            alert("Gagal mengekspor buffer sementara: " + err.message);
+                            alert("Gagal mengekspor buffer: " + err.message);
                             hideLoading(); 
                         },
                         { binary: true }
