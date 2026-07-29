@@ -158,7 +158,9 @@
         button.ar-btn { background: var(--ar-bg); border-color: var(--ar-border); color: var(--ar-text); }
         button.ar-btn:hover:not(:disabled) { box-shadow: var(--ar-glow); background: rgba(168, 85, 247, 0.25); }
 
-        #undoBtn { border-radius: 20px; padding: 4px 12px; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .small-action-btn { border-radius: 20px; padding: 4px 12px; }
+        
+        #undoBtn { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
         #undoBtn:hover:not(:disabled) { background: rgba(239, 68, 68, 0.2); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
 
         input[type="file"] { display: none; }
@@ -267,7 +269,11 @@
             <div class="section">
                 <div class="header-group">
                     <label style="margin: 0;" data-i18n="manipulation">Spatial Manipulation</label>
-                    <button id="undoBtn" disabled data-i18n="undo">Undo</button>
+                    <!-- Ditambahkan div flex untuk menyusun Snap & Undo berjejeran -->
+                    <div style="display: flex; gap: 6px;">
+                        <button id="snapToggleBtn" class="small-action-btn active-toggle" data-i18n="snap">Snap</button>
+                        <button id="undoBtn" class="small-action-btn" disabled data-i18n="undo">Undo</button>
+                    </div>
                 </div>
                 <div class="btn-group-4">
                     <button id="toolView" class="active-tool" title="Orbit Camera" data-i18n="view">View</button>
@@ -350,6 +356,7 @@
                 importText: "Import Model 3D (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Manipulasi Ruang",
+                snap: "Magnet", // Snap dalam bahasa indonesia yang lebih pas konteks ruang 3D
                 undo: "Undo",
                 view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
                 targetPoly: "Target Poligon", applyBtn: "Terapkan Reduksi", resetMesh: "Reset Mesh",
@@ -372,6 +379,7 @@
                 importText: "Import 3D Model (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Spatial Manipulation",
+                snap: "Snap",
                 undo: "Undo",
                 view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
                 targetPoly: "Target Polygons", applyBtn: "Apply Reduction", resetMesh: "Reset Mesh",
@@ -400,6 +408,7 @@
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         let currentArUrl = null; 
+        let isSnapEnabled = true; // Status Snap default nyala
         
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide
@@ -407,6 +416,7 @@
 
         const slider = document.getElementById('reductionSlider'); const percentDisplay = document.getElementById('percentDisplay');
         const applyBtn = document.getElementById('applyBtn'); const resetMeshBtn = document.getElementById('resetMeshBtn');
+        const snapToggleBtn = document.getElementById('snapToggleBtn');
         const undoBtn = document.getElementById('undoBtn'); const textureBtn = document.getElementById('textureBtn');
         const wireframeBtn = document.getElementById('wireframeBtn'); const shadingBtn = document.getElementById('shadingBtn');
         const toolView = document.getElementById('toolView'); const toolMove = document.getElementById('toolMove');
@@ -467,9 +477,8 @@
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.setSize(1.5); 
             
-            transformControl.setTranslationSnap(0.1); 
-            transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); 
-            transformControl.setScaleSnap(0.1);
+            // Atur Snap awal
+            updateSnapSettings();
 
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
@@ -501,6 +510,20 @@
             scene.add(grid);
 
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
+        }
+
+        // Fungsi memperbarui status Snap pada Three.js TransformControl
+        function updateSnapSettings() {
+            if (isSnapEnabled) {
+                transformControl.setTranslationSnap(0.1); 
+                transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); 
+                transformControl.setScaleSnap(0.1);
+            } else {
+                // Mematikan snap dengan memberikannya null
+                transformControl.setTranslationSnap(null); 
+                transformControl.setRotationSnap(null); 
+                transformControl.setScaleSnap(null);
+            }
         }
 
         function saveToHistory(state) {
@@ -594,6 +617,13 @@
             slider.addEventListener('input', (e) => percentDisplay.textContent = `${e.target.value}%`);
             slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             undoBtn.addEventListener('click', performUndo); window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
+
+            // Toggle fitur Snap
+            snapToggleBtn.addEventListener('click', () => {
+                isSnapEnabled = !isSnapEnabled;
+                snapToggleBtn.classList.toggle('active-toggle', isSnapEnabled);
+                updateSnapSettings();
+            });
 
             toolView.addEventListener('click', () => { 
                 resetToolButtons(); toolView.classList.add('active-tool'); 
