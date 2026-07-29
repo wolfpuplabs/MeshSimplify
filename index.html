@@ -369,7 +369,7 @@
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
                 "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
-                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.21.0/meshopt_simplifier.module.js"
+                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.32.0/meshopt_simplifier.module.js"
             }
         }
     </script>
@@ -384,8 +384,8 @@
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         
-        // PERBAIKAN FATAL ERROR: Versi dan nama variabel import sudah dikoreksi
-        import { meshoptSimplifier } from 'meshoptimizer';
+        // PERBAIKAN FATAL ERROR: Variabel impor kini menggunakan huruf besar yang valid
+        import { MeshoptSimplifier } from 'meshoptimizer';
         
         import { WebIO } from '@gltf-transform/core';
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
@@ -647,7 +647,7 @@
                     new GLTFExporter().parse(tempMesh, (buf) => {
                         origFileSizeValue = buf.byteLength;
                         updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
-                    }, null, { binary: true });
+                    }, function(err){ console.error(err); }, { binary: true });
                 } else {
                     updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
                 }
@@ -670,9 +670,6 @@
             setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
         }
 
-        // =========================================================
-        // NEW ALGORITHM: MESHOPTIMIZER + GLTF-TRANSFORM
-        // =========================================================
         async function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
@@ -681,12 +678,11 @@
             showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
             
             try {
-                // Tunggu Wasm Meshoptimizer siap memproses
-                await meshoptSimplifier.ready;
+                // Pastikan wasm meshoptimizer siap beraksi
+                await MeshoptSimplifier.ready;
                 
                 const targetRatio = (100 - reductionPercent) / 100;
                 
-                // Gunakan GLTFExporter untuk membungkus mesh asli untuk dikirim ke gltf-transform
                 const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
                 const exporter = new GLTFExporter();
                 
@@ -697,10 +693,10 @@
                             const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                             const document = await io.readBinary(new Uint8Array(gltfBuffer));
                             
-                            // Eksekusi meshoptimizer untuk memotong poligon secara cerdas (UV MAP AMAN!)
+                            // Transformasi mesh ini akan menyimpan UV dan Node dengan aman
                             await document.transform(
                                 weld({ tolerance: 0.0001 }), 
-                                simplify({ simplifier: meshoptSimplifier, ratio: targetRatio, error: 0.01 })
+                                simplify({ simplifier: MeshoptSimplifier, ratio: targetRatio, error: 0.01 })
                             );
                             
                             const simplifiedBuffer = await io.writeBinary(document);
@@ -717,6 +713,7 @@
                                     currentMesh.geometry = newGeo;
                                     currentMesh.geometry.computeVertexNormals();
                                     
+                                    // Aktifkan kembali material karena UV aman
                                     isTextureOn = true;
                                     textureBtn.classList.add('active-toggle');
                                     currentMesh.material = loadedMaterial;
@@ -934,7 +931,8 @@
                 exporter.parse(tempMesh, function(buffer) {
                     let size = buffer.byteLength * 0.45; 
                     document.getElementById('currSizeDisplay').textContent = formatBytes(size);
-                }, function() {
+                }, function(err) {
+                    console.error(err);
                     document.getElementById('currSizeDisplay').textContent = "Error";
                 }, { binary: true });
             } else {
