@@ -215,7 +215,7 @@
         .progress-bar {
             width: 0%; height: 100%; background: var(--accent-text);
             box-shadow: 0 0 10px var(--accent-text);
-            transition: width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1); /* Animasi halus melambat di akhir */
+            transition: width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1);
         }
 
         /* --- AR MODAL OVERLAY STYLES --- */
@@ -615,9 +615,23 @@
                 geometry.center(); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
                 const radius = geometry.boundingSphere.radius; const scale = 1.8 / (radius || 1);
                 
-                originalGeometry = geometry.clone(); loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                originalGeometry = geometry.clone(); 
+                
+                // DETEKSI UV MAP: Jika tidak ada UV (misal karena file hasil kompresi sebelumnya), paksa pakai warna biru default agar tidak hitam blank
+                const hasUV = geometry.attributes.uv !== undefined;
+                if (!hasUV) {
+                    loadedMaterial = defaultMaterial; // Fallback jika UV hilang
+                    textureBtn.classList.remove('active-toggle');
+                    isTextureOn = false;
+                } else {
+                    loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                    if (isTextureOn) textureBtn.classList.add('active-toggle');
+                }
+                
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
-                currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
+                currentMesh = new THREE.Mesh(geometry, activeMat); 
+                currentMesh.scale.set(scale, scale, scale); 
+                scene.add(currentMesh);
                 
                 if (!toolView.classList.contains('active-tool')) {
                     transformControl.attach(currentMesh);
@@ -651,6 +665,7 @@
 
         function loadDemoMesh() { 
             origFileSizeValue = 0; 
+            isTextureOn = true;
             setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
         }
 
@@ -659,19 +674,27 @@
             const reductionPercent = parseInt(slider.value);
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             
-            // Aktifkan loading dengan UI simulated progress bar
             showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
             
-            // Beri waktu bagi browser untuk melukis UI dan memulai animasi progress bar
             setTimeout(() => {
                 try {
                     const origVertCount = originalGeometry.attributes.position.count;
                     const targetCount = Math.max(4, Math.floor(origVertCount * ((100 - reductionPercent) / 100)));
                     
-                    // Task ini yang membekukan (freeze) browser
                     const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
-                    
-                    currentMesh.geometry.dispose(); currentMesh.geometry = simplifiedGeo; currentMesh.geometry.computeVertexNormals();
+                    currentMesh.geometry.dispose(); 
+                    currentMesh.geometry = simplifiedGeo; 
+                    currentMesh.geometry.computeVertexNormals();
+
+                    // SimplifyModifier MENGHAPUS UV MAP. Ubah paksa ke default material agar tidak hitam.
+                    if (!simplifiedGeo.attributes.uv && currentMesh.material !== defaultMaterial) {
+                        currentMesh.material = defaultMaterial;
+                        loadedMaterial = defaultMaterial;
+                        isTextureOn = false;
+                        textureBtn.classList.remove('active-toggle');
+                        applyCurrentMaterialStates();
+                    }
+
                     updateStats(origVertCount, simplifiedGeo.attributes.position.count);
                 } catch (err) { 
                     console.error(err); alert(i18n[currentLang].alertError); 
@@ -685,6 +708,15 @@
             if (!originalGeometry || !currentMesh) return;
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             currentMesh.geometry.dispose(); currentMesh.geometry = originalGeometry.clone();
+            
+            // Kembalikan status tombol tekstur jika geometry asli memiliki UV
+            if (originalGeometry.attributes.uv) {
+                isTextureOn = true;
+                textureBtn.classList.add('active-toggle');
+                currentMesh.material = loadedMaterial;
+                applyCurrentMaterialStates();
+            }
+
             slider.value = 50; percentDisplay.textContent = "50%";
             updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
         }
@@ -743,6 +775,7 @@
                 const file = e.target.files[0]; if (!file) return; 
                 
                 origFileSizeValue = file.size;
+                isTextureOn = true; // reset toggle tekstur saat unggah baru
                 
                 showLoading(`${i18n[currentLang].loadingMesh}`, false);
                 const fileURL = URL.createObjectURL(file);
@@ -873,18 +906,15 @@
             }
         }
 
-        // Trik Simulated Progress Bar
         function showLoading(text, showProgress = false) { 
             loadingText.textContent = text; 
             loadingOverlay.style.display = 'flex'; 
             
             if (showProgress) {
                 progressContainer.style.display = 'block';
-                // Reset animasi ke 0
                 progressBar.style.transition = 'none';
                 progressBar.style.width = '0%';
                 
-                // Memicu rendering CSS dengan jeda sangat singkat agar meluncur
                 setTimeout(() => {
                     progressBar.style.transition = 'width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
                     progressBar.style.width = '85%';
@@ -896,7 +926,6 @@
         
         function hideLoading() { 
             if (progressContainer.style.display === 'block') {
-                // Sentak bar ke 100% sesaat sebelum menghilang
                 progressBar.style.transition = 'width 0.2s ease-out';
                 progressBar.style.width = '100%';
                 
