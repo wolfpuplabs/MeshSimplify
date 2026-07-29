@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>3D Mesh Simplifier (Cinematic Spatial UI & AR)</title>
     
+    <!-- === WEB APP ICONS === -->
+    <link rel="icon" type="image/png" href="image_3.png">
+    <link rel="apple-touch-icon" href="image_3.png">
+    <link rel="shortcut icon" href="image_3.png">
+    
     <!-- Import pustaka model-viewer untuk fitur AR -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 
@@ -240,7 +245,7 @@
     <div id="ar-modal">
         <button id="closeArBtn" class="icon-btn" style="position: absolute; top: 24px; right: 24px; width: 44px; height: 44px; font-size: 1.2rem; z-index: 101;">✕</button>
         <div class="ar-container">
-            <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look" camera-controls shadow-intensity="1" alt="3D Model AR Preview"></model-viewer>
+            <model-viewer id="ar-viewer" autoplay ar ar-modes="webxr scene-viewer quick-look" camera-controls shadow-intensity="1" alt="3D Model AR Preview"></model-viewer>
         </div>
         <p style="margin-top: 20px; color: var(--text-main); font-weight: 500; font-size: 0.9rem;" data-i18n="arHint">Click the AR icon at the bottom right of the box to view in your space.</p>
     </div>
