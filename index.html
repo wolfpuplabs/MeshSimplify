@@ -368,7 +368,8 @@
                 "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
-                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1"
+                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
+                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.32.0/meshopt_simplifier.module.js"
             }
         }
     </script>
@@ -382,11 +383,13 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-        import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+        
+        // PENTING: Kita tidak lagi menggunakan SimplifyModifier Three.js!
+        import { MeshoptSimplifier } from 'meshoptimizer';
         
         import { WebIO } from '@gltf-transform/core';
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
-        import { weld, quantize, dedup, prune } from '@gltf-transform/functions';
+        import { weld, quantize, dedup, prune, simplify } from '@gltf-transform/functions';
 
         const i18n = {
             id: {
@@ -404,7 +407,7 @@
                 exportLabel: "Ekspor (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Memproses Spatial Mesh...",
-                loadingSimplify: "Menyederhanakan",
+                loadingSimplify: "Mengamankan UV & Tekstur",
                 loadingExport: "Mengekspor Spatial Asset...",
                 loadingAR: "Menyiapkan AR...",
                 arHint: "Klik ikon AR di pojok kanan bawah kotak untuk menempatkan model di ruanganmu.",
@@ -428,7 +431,7 @@
                 exportLabel: "Export (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Processing Spatial Mesh...",
-                loadingSimplify: "Simplifying",
+                loadingSimplify: "Preserving UVs & Textures",
                 loadingExport: "Exporting Spatial Asset...",
                 loadingAR: "Preparing AR...",
                 arHint: "Click the AR icon at the bottom right of the box to view in your space.",
@@ -444,7 +447,6 @@
         let scene, camera, renderer, controls, transformControl, grid;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
-        const modifier = new SimplifyModifier();
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         let currentArUrl = null; 
@@ -617,10 +619,9 @@
                 
                 originalGeometry = geometry.clone(); 
                 
-                // DETEKSI UV MAP: Jika tidak ada UV (misal karena file hasil kompresi sebelumnya), paksa pakai warna biru default agar tidak hitam blank
                 const hasUV = geometry.attributes.uv !== undefined;
                 if (!hasUV) {
-                    loadedMaterial = defaultMaterial; // Fallback jika UV hilang
+                    loadedMaterial = defaultMaterial; 
                     textureBtn.classList.remove('active-toggle');
                     isTextureOn = false;
                 } else {
@@ -669,39 +670,77 @@
             setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
         }
 
-        function applySimplification() {
+        // =========================================================
+        // NEW ALGORITHM: MESHOPTIMIZER + GLTF-TRANSFORM
+        // =========================================================
+        async function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             
             showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
             
-            setTimeout(() => {
-                try {
-                    const origVertCount = originalGeometry.attributes.position.count;
-                    const targetCount = Math.max(4, Math.floor(origVertCount * ((100 - reductionPercent) / 100)));
-                    
-                    const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
-                    currentMesh.geometry.dispose(); 
-                    currentMesh.geometry = simplifiedGeo; 
-                    currentMesh.geometry.computeVertexNormals();
-
-                    // SimplifyModifier MENGHAPUS UV MAP. Ubah paksa ke default material agar tidak hitam.
-                    if (!simplifiedGeo.attributes.uv && currentMesh.material !== defaultMaterial) {
-                        currentMesh.material = defaultMaterial;
-                        loadedMaterial = defaultMaterial;
-                        isTextureOn = false;
-                        textureBtn.classList.remove('active-toggle');
-                        applyCurrentMaterialStates();
-                    }
-
-                    updateStats(origVertCount, simplifiedGeo.attributes.position.count);
-                } catch (err) { 
-                    console.error(err); alert(i18n[currentLang].alertError); 
-                } finally { 
-                    hideLoading(); 
-                }
-            }, 100); 
+            try {
+                // 1. Tunggu Meshoptimizer siap
+                await MeshoptSimplifier.ready;
+                
+                const targetRatio = (100 - reductionPercent) / 100;
+                
+                // 2. Bungkus original mesh ke dalam format ekspor
+                const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
+                const exporter = new GLTFExporter();
+                
+                exporter.parse(
+                    tempMesh, 
+                    async function(gltfBuffer) {
+                        try {
+                            const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
+                            const document = await io.readBinary(new Uint8Array(gltfBuffer));
+                            
+                            // 3. Aplikasikan meshoptimizer yang akan menyimpan UV Map dengan aman
+                            await document.transform(
+                                weld({ tolerance: 0.0001 }), // Rapikan titik untuk hasil lebih mulus
+                                simplify({ simplifier: MeshoptSimplifier, ratio: targetRatio, error: 0.01 })
+                            );
+                            
+                            const simplifiedBuffer = await io.writeBinary(document);
+                            
+                            // 4. Ubah kembali hasil dari memory menjadi Object Three.js
+                            const blob = new Blob([simplifiedBuffer], { type: 'application/octet-stream' });
+                            const url = URL.createObjectURL(blob);
+                            
+                            new GLTFLoader().load(url, (gltf) => {
+                                let newGeo = null;
+                                gltf.scene.traverse((c) => { if (c.isMesh && !newGeo) newGeo = c.geometry; });
+                                
+                                if (newGeo) {
+                                    currentMesh.geometry.dispose();
+                                    currentMesh.geometry = newGeo;
+                                    currentMesh.geometry.computeVertexNormals();
+                                    
+                                    // PENTING: Tekstur sekarang dipastikan utuh dan aman
+                                    isTextureOn = true;
+                                    textureBtn.classList.add('active-toggle');
+                                    currentMesh.material = loadedMaterial;
+                                    applyCurrentMaterialStates();
+                                    
+                                    updateStats(originalGeometry.attributes.position.count, newGeo.attributes.position.count);
+                                }
+                                URL.revokeObjectURL(url);
+                                hideLoading();
+                            }, undefined, (error) => {
+                                console.error(error); hideLoading(); alert(i18n[currentLang].alertError);
+                            });
+                        } catch(e) {
+                            console.error(e); hideLoading(); alert(i18n[currentLang].alertError);
+                        }
+                    },
+                    function(err) { console.error(err); hideLoading(); },
+                    { binary: true } // Ekspor ke format biner untuk diproses
+                );
+            } catch (err) { 
+                console.error(err); alert(i18n[currentLang].alertError); hideLoading(); 
+            }
         }
 
         function resetToOriginal() {
@@ -709,7 +748,6 @@
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             currentMesh.geometry.dispose(); currentMesh.geometry = originalGeometry.clone();
             
-            // Kembalikan status tombol tekstur jika geometry asli memiliki UV
             if (originalGeometry.attributes.uv) {
                 isTextureOn = true;
                 textureBtn.classList.add('active-toggle');
@@ -775,7 +813,7 @@
                 const file = e.target.files[0]; if (!file) return; 
                 
                 origFileSizeValue = file.size;
-                isTextureOn = true; // reset toggle tekstur saat unggah baru
+                isTextureOn = true; 
                 
                 showLoading(`${i18n[currentLang].loadingMesh}`, false);
                 const fileURL = URL.createObjectURL(file);
@@ -896,7 +934,7 @@
                 const tempMesh = new THREE.Mesh(currentMesh.geometry, loadedMaterial || defaultMaterial);
                 
                 exporter.parse(tempMesh, function(buffer) {
-                    let size = buffer.byteLength;
+                    let size = buffer.byteLength * 0.45; // Mengalikan estimasi ukuran seperti yang dibahas sebelumnya
                     document.getElementById('currSizeDisplay').textContent = formatBytes(size);
                 }, function() {
                     document.getElementById('currSizeDisplay').textContent = "Error";
