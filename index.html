@@ -65,22 +65,13 @@
             padding: 24px 24px 12px 24px;
         }
 
-        /* --- STYLING LOGO BRANDING --- */
-        .brand-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        .brand-container { display: flex; align-items: center; gap: 12px; }
 
         .brand-logo {
-            width: 42px;
-            height: 42px;
-            object-fit: contain;
-            border-radius: 12px; /* Membuat sudut melengkung squircle */
-            background: rgba(255, 255, 255, 0.9); /* Latar terang agar serasi di dark UI */
-            padding: 4px;
+            width: 42px; height: 42px; object-fit: contain; border-radius: 12px; 
+            background: rgba(255, 255, 255, 0.9); padding: 4px;
             box-shadow: inset 0 1px 3px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.3);
-            filter: grayscale(100%) contrast(1.1); /* Mengubah logo jadi BW */
+            filter: grayscale(100%) contrast(1.1); 
         }
 
         .header-controls { display: flex; gap: 8px; }
@@ -207,7 +198,6 @@
 
     <div id="ui-panel">
         <div class="panel-header">
-            <!-- Container Branding Logo dan Judul Aplikasi -->
             <div class="brand-container">
                 <img src="image_3.png" alt="WolfPupLabs" class="brand-logo">
                 <div>
@@ -419,7 +409,10 @@
             controls = new OrbitControls(camera, renderer.domElement); 
             controls.enableDamping = true; controls.dampingFactor = 0.05;
 
+            // Memperbesar Gizmo (panah transformasi) agar mudah ditap di HP/Tablet
             transformControl = new TransformControls(camera, renderer.domElement);
+            transformControl.setSize(1.5); 
+            
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
                 if (event.value && currentMesh) { 
@@ -442,8 +435,9 @@
             rimLight.position.set(-5, 4, -5);
             scene.add(rimLight);
             
-            const grid = new THREE.GridHelper(20, 40, 0xffffff, 0xffffff); 
-            grid.material.opacity = 0.03; 
+            // Mempertebal Floor Grid dari 0.03 menjadi 0.15 agar tidak hilang di mode Cinematic
+            const grid = new THREE.GridHelper(30, 60, 0xffffff, 0xffffff); 
+            grid.material.opacity = 0.15; 
             grid.material.transparent = true;
             grid.position.y = -1.2; scene.add(grid);
 
