@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Mesh Simplifier (Compress & View in AR)</title>
+    <title>3D Mesh Simplifier (Cinematic Spatial UI & AR)</title>
     
     <!-- Import pustaka model-viewer untuk fitur AR -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
@@ -233,7 +233,7 @@
         <div class="ar-container">
             <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look" camera-controls shadow-intensity="1" alt="3D Model AR Preview"></model-viewer>
         </div>
-        <p style="margin-top: 20px; color: var(--text-main); font-weight: 500; font-size: 0.9rem;" data-i18n="arHint">Click the AR icon at the bottom right of the model to view in your space.</p>
+        <p style="margin-top: 20px; color: var(--text-main); font-weight: 500; font-size: 0.9rem;" data-i18n="arHint">Click the AR icon at the bottom right of the box to view in your space.</p>
     </div>
 
     <input type="file" id="fileInput" accept=".obj,.glb,.gltf,.fbx">
@@ -244,7 +244,7 @@
                 <img src="image_3.png" alt="WolfPupLabs" class="brand-logo">
                 <div>
                     <h2>Mesh Simplifier</h2>
-                    <p class="subtitle" data-i18n="subtitle">Spatial Edition • Safe Compression</p>
+                    <p class="subtitle" data-i18n="subtitle">Compress • View in AR</p>
                 </div>
             </div>
             <div class="header-controls">
@@ -267,7 +267,6 @@
             <div class="section">
                 <div class="header-group">
                     <label style="margin: 0;" data-i18n="manipulation">Spatial Manipulation</label>
-                    <!-- EMOJI PANAH UNDO DIHAPUS -->
                     <button id="undoBtn" disabled data-i18n="undo">Undo</button>
                 </div>
                 <div class="btn-group-4">
@@ -307,7 +306,6 @@
                 </div>
                 
                 <label style="margin-top: 16px; margin-bottom: 4px;" data-i18n="exportLabel">Export (Web-Optimized)</label>
-                <!-- DIBUAT 3 KOLOM: EMOJI DISKET/BOX DIHAPUS, DITAMBAH TOMBOL AR -->
                 <div class="btn-group-3">
                     <button id="exportObjBtn">.OBJ</button>
                     <button id="exportGlbBtn" class="success">.GLB</button>
@@ -348,7 +346,7 @@
 
         const i18n = {
             id: {
-                subtitle: "Spatial Edition • Safe Compression",
+                subtitle: "Kompres • Lihat di AR",
                 importText: "Import Model 3D (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Manipulasi Ruang",
@@ -370,7 +368,7 @@
                 alertFailExport: "Gagal mengekspor data."
             },
             en: {
-                subtitle: "Spatial Edition • Safe Compression",
+                subtitle: "Compress • View in AR",
                 importText: "Import 3D Model (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Spatial Manipulation",
@@ -401,7 +399,7 @@
         const modifier = new SimplifyModifier();
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
-        let currentArUrl = null; // Menyimpan blob URL untuk AR
+        let currentArUrl = null; 
         
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide
@@ -422,7 +420,6 @@
         const langToggleBtn = document.getElementById('langToggleBtn');
         const uiContent = document.getElementById('ui-content');
         
-        // Element Modal AR
         const arModal = document.getElementById('ar-modal');
         const closeArBtn = document.getElementById('closeArBtn');
         const arViewer = document.getElementById('ar-viewer');
@@ -697,12 +694,10 @@
                 );
             });
 
-            // --- LOGIKA TOMBOL AR PREVIEW ---
             arPreviewBtn.addEventListener('click', () => {
                 if (!currentMesh) return;
                 showLoading(i18n[currentLang].loadingAR);
                 
-                // Detach sementara gizmo agar tidak ikut terexport ke AR
                 const prevMode = toolView.className.includes('active-tool') ? 'view' : transformControl.mode;
                 transformControl.detach(); 
                 
@@ -716,13 +711,12 @@
                         currentMesh.material = tempMaterial;
                         if (prevMode !== 'view') transformControl.attach(currentMesh);
 
-                        // Ekspor cepat (tanpa kompresi berat) agar AR instan terbuka
                         const blob = new Blob([gltfArrayBuffer], { type: 'application/octet-stream' });
                         if (currentArUrl) URL.revokeObjectURL(currentArUrl);
                         currentArUrl = URL.createObjectURL(blob);
                         
                         arViewer.src = currentArUrl;
-                        arModal.style.display = 'flex'; // Tampilkan Modal AR
+                        arModal.style.display = 'flex'; 
                         hideLoading();
                     },
                     function (error) {
@@ -730,11 +724,10 @@
                         if (prevMode !== 'view') transformControl.attach(currentMesh);
                         console.error(error); alert(i18n[currentLang].alertFailExport); hideLoading();
                     },
-                    { binary: true } // Ekspor raw GLB
+                    { binary: true } 
                 );
             });
 
-            // Logika Menutup Modal AR
             closeArBtn.addEventListener('click', () => {
                 arModal.style.display = 'none';
             });
