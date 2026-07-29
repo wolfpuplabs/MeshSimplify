@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Mesh Simplifier (Cinematic Spatial UI)</title>
+    <title>3D Mesh Simplifier (Cinematic & Edit Mode)</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
@@ -55,8 +55,7 @@
             border-radius: 28px;
             box-shadow: var(--glass-shadow), var(--glass-highlight);
             z-index: 10; display: flex; flex-direction: column; 
-            max-height: calc(100vh - 48px);
-            max-height: calc(100dvh - 48px);
+            max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px);
             transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         
@@ -75,10 +74,7 @@
         }
         .icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; transform: scale(1.05); }
 
-        #ui-content { 
-            padding: 0 24px 32px 24px; 
-            overflow-y: auto; flex: 1; min-height: 0; 
-        }
+        #ui-content { padding: 0 24px 32px 24px; overflow-y: auto; flex: 1; min-height: 0; }
         
         #ui-content::-webkit-scrollbar { width: 4px; }
         #ui-content::-webkit-scrollbar-track { background: transparent; }
@@ -168,8 +164,7 @@
         @media (max-width: 768px) {
             #ui-panel {
                 top: auto; bottom: 16px; left: 16px; width: calc(100vw - 32px); 
-                max-height: 60vh; max-height: 60dvh; 
-                border-radius: 32px;
+                max-height: 60vh; max-height: 60dvh; border-radius: 32px;
             }
             .panel-header { padding: 20px 20px 10px 20px; }
             #ui-content { padding: 0 20px 24px 20px; }
@@ -333,13 +328,12 @@
         let currentLang = 'en';
 
         let scene, camera, renderer, controls, transformControl;
+        let cinematicLightGroup, editLightGroup, gridHelper;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
         const modifier = new SimplifyModifier();
-
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         
-        // Sedikit menaikkan metalness material default agar cinematic lighting terpantul lebih dramatis
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide
         });
@@ -371,9 +365,7 @@
             
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (i18n[currentLang][key]) {
-                    el.innerText = i18n[currentLang][key];
-                }
+                if (i18n[currentLang][key]) el.innerText = i18n[currentLang][key];
             });
             updateUndoUI();
         });
@@ -389,11 +381,10 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
             
-            // --- CINEMATIC POST-PROCESSING SETUP ---
+            // Post-Processing ACESFilmic untuk tampilan Cinema/Film
             renderer.outputColorSpace = THREE.SRGBColorSpace; 
-            renderer.toneMapping = THREE.ACESFilmicToneMapping; // Standar industri film
-            renderer.toneMappingExposure = 1.1; // Sedikit dinaikkan agar highlight menonjol
-            
+            renderer.toneMapping = THREE.ACESFilmicToneMapping; 
+            renderer.toneMappingExposure = 1.1; 
             container.appendChild(renderer.domElement);
             
             controls = new OrbitControls(camera, renderer.domElement); 
@@ -410,30 +401,51 @@
             });
             scene.add(transformControl);
 
-            // --- 3-POINT CINEMATIC LIGHTING SYSTEM ---
-            
-            // 1. Fill Light (Menggantikan AmbientLight yang flat). Memberi gradasi natural
-            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222233, 0.6);
-            hemiLight.position.set(0, 10, 0);
-            scene.add(hemiLight);
+            // ==========================================
+            // LIGHTING & ENVIRONMENT GROUPS
+            // ==========================================
 
-            // 2. Key Light (Lampu utama, warm tone untuk kontras)
-            const keyLight = new THREE.DirectionalLight(0xffeedd, 3.0);
-            keyLight.position.set(5, 5, 5);
-            scene.add(keyLight);
+            // 1. Cinematic Lights (Default untuk View Mode)
+            cinematicLightGroup = new THREE.Group();
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222233, 0.6); hemiLight.position.set(0, 10, 0);
+            const keyLight = new THREE.DirectionalLight(0xffeedd, 3.0); keyLight.position.set(5, 5, 5);
+            const rimLight = new THREE.DirectionalLight(0x7dd3fc, 4.5); rimLight.position.set(-5, 4, -5);
+            cinematicLightGroup.add(hemiLight, keyLight, rimLight);
+            scene.add(cinematicLightGroup);
 
-            // 3. Rim/Back Light (Menciptakan siluet cyan dramatis khas Sci-fi/Spatial)
-            const rimLight = new THREE.DirectionalLight(0x7dd3fc, 4.5);
-            rimLight.position.set(-5, 4, -5);
-            scene.add(rimLight);
-            
-            // Subtle Grid
-            const grid = new THREE.GridHelper(20, 40, 0xffffff, 0xffffff); 
-            grid.material.opacity = 0.03; // Dibuat lebih tipis agar tidak mengganggu sinematik
-            grid.material.transparent = true;
-            grid.position.y = -1.2; scene.add(grid);
+            // 2. Edit Lights (Untuk Transform Mode - Flat Ambient)
+            editLightGroup = new THREE.Group();
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); // Sangat terang agar detail model terlihat
+            const basicDirLight = new THREE.DirectionalLight(0xffffff, 1.0); basicDirLight.position.set(5, 10, 7);
+            editLightGroup.add(ambientLight, basicDirLight);
+            scene.add(editLightGroup);
+
+            // 3. Grid Helper (Hanya saat Transform Mode)
+            gridHelper = new THREE.GridHelper(20, 40, 0xffffff, 0xffffff); 
+            gridHelper.material.opacity = 0.15; gridHelper.material.transparent = true;
+            gridHelper.position.y = -1.2; 
+            scene.add(gridHelper);
+
+            // Terapkan Kondisi Awal (Default: View Mode)
+            setVisualMode('view');
 
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
+        }
+
+        // FUNGSI PENGATUR SWITCH MODE CAHAYA & GIZMO
+        function setVisualMode(mode) {
+            if (mode === 'view') {
+                cinematicLightGroup.visible = true; // Nyalakan Cinematic
+                editLightGroup.visible = false;     // Matikan Ambient Flat
+                gridHelper.visible = false;         // Sembunyikan Grid
+                transformControl.detach();          // Sembunyikan Gizmo
+            } else {
+                cinematicLightGroup.visible = false; // Matikan Cinematic
+                editLightGroup.visible = true;       // Nyalakan Ambient Flat
+                gridHelper.visible = true;           // Munculkan Grid
+                transformControl.setMode(mode);
+                if (currentMesh) transformControl.attach(currentMesh); // Munculkan Gizmo
+            }
         }
 
         function saveToHistory(state) {
@@ -477,11 +489,8 @@
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
                 currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
                 
-                if (!toolView.classList.contains('active-tool')) {
-                    transformControl.attach(currentMesh);
-                } else {
-                    transformControl.detach();
-                }
+                // Pastikan Gizmo hanya muncul kalau sedang di mode edit
+                if (!toolView.classList.contains('active-tool')) transformControl.attach(currentMesh);
                 
                 applyCurrentMaterialStates(); updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count); hideLoading();
             }, 50);
@@ -528,10 +537,11 @@
             slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             undoBtn.addEventListener('click', performUndo); window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
 
-            toolView.addEventListener('click', () => { resetToolButtons(); toolView.classList.add('active-tool'); transformControl.detach(); });
-            toolMove.addEventListener('click', () => { resetToolButtons(); toolMove.classList.add('active-tool'); transformControl.setMode('translate'); if (currentMesh) transformControl.attach(currentMesh); });
-            toolRotate.addEventListener('click', () => { resetToolButtons(); toolRotate.classList.add('active-tool'); transformControl.setMode('rotate'); if (currentMesh) transformControl.attach(currentMesh); });
-            toolScale.addEventListener('click', () => { resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale'); if (currentMesh) transformControl.attach(currentMesh); });
+            // Menghubungkan tombol ke Fungsi setVisualMode
+            toolView.addEventListener('click', () => { resetToolButtons(); toolView.classList.add('active-tool'); setVisualMode('view'); });
+            toolMove.addEventListener('click', () => { resetToolButtons(); toolMove.classList.add('active-tool'); setVisualMode('translate'); });
+            toolRotate.addEventListener('click', () => { resetToolButtons(); toolRotate.classList.add('active-tool'); setVisualMode('rotate'); });
+            toolScale.addEventListener('click', () => { resetToolButtons(); toolScale.classList.add('active-tool'); setVisualMode('scale'); });
 
             textureBtn.addEventListener('click', () => {
                 if (!currentMesh) return; 
