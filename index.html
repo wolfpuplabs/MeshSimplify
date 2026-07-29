@@ -206,7 +206,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* --- PROGRESS BAR STYLES --- */
         .progress-container {
             width: 100%; height: 4px; background: rgba(0, 0, 0, 0.5);
             border-radius: 2px; overflow: hidden; display: none;
@@ -215,10 +214,9 @@
         .progress-bar {
             width: 0%; height: 100%; background: var(--accent-text);
             box-shadow: 0 0 10px var(--accent-text);
-            transition: width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1); /* Animasi halus melambat di akhir */
+            transition: width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1);
         }
 
-        /* --- AR MODAL OVERLAY STYLES --- */
         #ar-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.85); z-index: 100; backdrop-filter: blur(15px);
@@ -322,6 +320,7 @@
                     <span data-i18n="targetPoly">Target Polygons</span>
                     <span class="slider-val" id="percentDisplay">50%</span>
                 </label>
+                <!-- Slider nilai: misal 20 berarti Target hasil akhirnya adalah 20% -->
                 <input type="range" id="reductionSlider" min="5" max="90" step="5" value="50">
                 <div class="btn-group">
                     <button id="applyBtn" class="primary" data-i18n="applyBtn">Apply Reduction</button>
@@ -361,6 +360,7 @@
 
     <div id="canvas-container"></div>
 
+    <!-- PENTING: Kembali menggunakan Import Map Resmi untuk Vercel -->
     <script type="importmap">
         {
             "imports": {
@@ -368,7 +368,8 @@
                 "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
-                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1"
+                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
+                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.32.0/meshopt_simplifier.module.js"
             }
         }
     </script>
@@ -382,11 +383,13 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-        import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
-        
+
         import { WebIO } from '@gltf-transform/core';
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
-        import { weld, quantize, dedup, prune } from '@gltf-transform/functions';
+        import { weld, quantize, dedup, prune, simplify } from '@gltf-transform/functions';
+        
+        // Memuat MeshOptimizer dengan syntax import resmi standard ESM
+        import { meshoptSimplifier } from 'meshoptimizer';
 
         const i18n = {
             id: {
@@ -404,7 +407,7 @@
                 exportLabel: "Ekspor (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Memproses Spatial Mesh...",
-                loadingSimplify: "Menyederhanakan",
+                loadingSimplify: "Mengamankan UV & Tekstur",
                 loadingExport: "Mengekspor Spatial Asset...",
                 loadingAR: "Menyiapkan AR...",
                 arHint: "Klik ikon AR di pojok kanan bawah kotak untuk menempatkan model di ruanganmu.",
@@ -428,7 +431,7 @@
                 exportLabel: "Export (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Processing Spatial Mesh...",
-                loadingSimplify: "Simplifying",
+                loadingSimplify: "Preserving UVs & Textures",
                 loadingExport: "Exporting Spatial Asset...",
                 loadingAR: "Preparing AR...",
                 arHint: "Click the AR icon at the bottom right of the box to view in your space.",
@@ -444,7 +447,6 @@
         let scene, camera, renderer, controls, transformControl, grid;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
-        const modifier = new SimplifyModifier();
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         let currentArUrl = null; 
@@ -615,9 +617,22 @@
                 geometry.center(); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
                 const radius = geometry.boundingSphere.radius; const scale = 1.8 / (radius || 1);
                 
-                originalGeometry = geometry.clone(); loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                originalGeometry = geometry.clone(); 
+                
+                const hasUV = geometry.attributes.uv !== undefined;
+                if (!hasUV) {
+                    loadedMaterial = defaultMaterial; 
+                    textureBtn.classList.remove('active-toggle');
+                    isTextureOn = false;
+                } else {
+                    loadedMaterial = sourceMaterial ? sourceMaterial : defaultMaterial;
+                    if (isTextureOn) textureBtn.classList.add('active-toggle');
+                }
+                
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
-                currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
+                currentMesh = new THREE.Mesh(geometry, activeMat); 
+                currentMesh.scale.set(scale, scale, scale); 
+                scene.add(currentMesh);
                 
                 if (!toolView.classList.contains('active-tool')) {
                     transformControl.attach(currentMesh);
@@ -632,7 +647,7 @@
                     new GLTFExporter().parse(tempMesh, (buf) => {
                         origFileSizeValue = buf.byteLength;
                         updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
-                    }, null, { binary: true });
+                    }, function(err){ console.error(err); }, { binary: true });
                 } else {
                     updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
                 }
@@ -651,40 +666,104 @@
 
         function loadDemoMesh() { 
             origFileSizeValue = 0; 
+            isTextureOn = true;
             setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
         }
 
-        function applySimplification() {
+        async function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
-            const reductionPercent = parseInt(slider.value);
+            
+            // MATH FIX: Jika slider "Target Polygons" bernilai 20, artinya pengguna ingin "Menyisakan 20%".
+            // Jadi rasionya murni = 20 / 100 = 0.2 (BUKAN 0.8 seperti sebelumnya).
+            const targetRatio = parseInt(slider.value) / 100;
+            
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             
-            // Aktifkan loading dengan UI simulated progress bar
-            showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
+            showLoading(`${i18n[currentLang].loadingSimplify} (${slider.value}%)...`, true);
             
-            // Beri waktu bagi browser untuk melukis UI dan memulai animasi progress bar
-            setTimeout(() => {
+            setTimeout(async () => {
                 try {
-                    const origVertCount = originalGeometry.attributes.position.count;
-                    const targetCount = Math.max(4, Math.floor(origVertCount * ((100 - reductionPercent) / 100)));
+                    await meshoptSimplifier.ready;
                     
-                    // Task ini yang membekukan (freeze) browser
-                    const simplifiedGeo = modifier.modify(originalGeometry, targetCount);
+                    const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
+                    const exporter = new GLTFExporter();
                     
-                    currentMesh.geometry.dispose(); currentMesh.geometry = simplifiedGeo; currentMesh.geometry.computeVertexNormals();
-                    updateStats(origVertCount, simplifiedGeo.attributes.position.count);
-                } catch (err) { 
-                    console.error(err); alert(i18n[currentLang].alertError); 
-                } finally { 
-                    hideLoading(); 
+                    exporter.parse(
+                        tempMesh, 
+                        async function(gltfBuffer) {
+                            try {
+                                const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
+                                const document = await io.readBinary(new Uint8Array(gltfBuffer));
+                                
+                                // Ditambahkan dedup() & prune() agar pembersihan optimal
+                                // Toleransi 'error' dilonggarkan sangat jauh (0.25) agar agresif memotong model organik (seperti wajah/karakter)
+                                await document.transform(
+                                    weld({ tolerance: 0.0001 }), 
+                                    dedup(),
+                                    simplify({ simplifier: meshoptSimplifier, ratio: targetRatio, error: 0.25 }),
+                                    prune()
+                                );
+                                
+                                const simplifiedBuffer = await io.writeBinary(document);
+                                const blob = new Blob([simplifiedBuffer], { type: 'application/octet-stream' });
+                                const url = URL.createObjectURL(blob);
+                                
+                                new GLTFLoader().load(url, (gltf) => {
+                                    let newGeo = null;
+                                    gltf.scene.traverse((c) => { if (c.isMesh && !newGeo) newGeo = c.geometry; });
+                                    
+                                    if (newGeo) {
+                                        currentMesh.geometry.dispose();
+                                        currentMesh.geometry = newGeo;
+                                        currentMesh.geometry.computeVertexNormals();
+                                        
+                                        isTextureOn = true;
+                                        textureBtn.classList.add('active-toggle');
+                                        currentMesh.material = loadedMaterial;
+                                        applyCurrentMaterialStates();
+                                        
+                                        updateStats(originalGeometry.attributes.position.count, newGeo.attributes.position.count);
+                                    }
+                                    URL.revokeObjectURL(url);
+                                    hideLoading();
+                                }, undefined, (err) => {
+                                    console.error(err);
+                                    alert("Gagal merender hasil kompresi: " + err.message);
+                                    hideLoading();
+                                });
+                            } catch(err) {
+                                console.error(err);
+                                alert("Proses kompresi dihentikan: " + err.message);
+                                hideLoading();
+                            }
+                        },
+                        function(err) { 
+                            console.error(err); 
+                            alert("Gagal mengekspor buffer: " + err.message);
+                            hideLoading(); 
+                        },
+                        { binary: true }
+                    );
+                } catch (err) {
+                    console.error("Fatal Error:", err);
+                    alert("TERJADI KESALAHAN: " + err.message);
+                    hideLoading();
                 }
-            }, 100); 
+            }, 50);
         }
 
         function resetToOriginal() {
             if (!originalGeometry || !currentMesh) return;
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             currentMesh.geometry.dispose(); currentMesh.geometry = originalGeometry.clone();
+            
+            if (originalGeometry.attributes.uv) {
+                isTextureOn = true;
+                textureBtn.classList.add('active-toggle');
+                currentMesh.material = loadedMaterial;
+                applyCurrentMaterialStates();
+            }
+
             slider.value = 50; percentDisplay.textContent = "50%";
             updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
         }
@@ -743,6 +822,7 @@
                 const file = e.target.files[0]; if (!file) return; 
                 
                 origFileSizeValue = file.size;
+                isTextureOn = true; 
                 
                 showLoading(`${i18n[currentLang].loadingMesh}`, false);
                 const fileURL = URL.createObjectURL(file);
@@ -863,9 +943,10 @@
                 const tempMesh = new THREE.Mesh(currentMesh.geometry, loadedMaterial || defaultMaterial);
                 
                 exporter.parse(tempMesh, function(buffer) {
-                    let size = buffer.byteLength;
+                    let size = buffer.byteLength * 0.45; 
                     document.getElementById('currSizeDisplay').textContent = formatBytes(size);
-                }, function() {
+                }, function(err) {
+                    console.error(err);
                     document.getElementById('currSizeDisplay').textContent = "Error";
                 }, { binary: true });
             } else {
@@ -873,18 +954,15 @@
             }
         }
 
-        // Trik Simulated Progress Bar
         function showLoading(text, showProgress = false) { 
             loadingText.textContent = text; 
             loadingOverlay.style.display = 'flex'; 
             
             if (showProgress) {
                 progressContainer.style.display = 'block';
-                // Reset animasi ke 0
                 progressBar.style.transition = 'none';
                 progressBar.style.width = '0%';
                 
-                // Memicu rendering CSS dengan jeda sangat singkat agar meluncur
                 setTimeout(() => {
                     progressBar.style.transition = 'width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
                     progressBar.style.width = '85%';
@@ -896,7 +974,6 @@
         
         function hideLoading() { 
             if (progressContainer.style.display === 'block') {
-                // Sentak bar ke 100% sesaat sebelum menghilang
                 progressBar.style.transition = 'width 0.2s ease-out';
                 progressBar.style.width = '100%';
                 
@@ -919,3 +996,4 @@
         init();
     </script>
 </body>
+</html>
