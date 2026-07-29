@@ -13,6 +13,9 @@
     <!-- Import pustaka model-viewer untuk fitur AR -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
 
+    <!-- PENTING: Global Script untuk menghindari blokir WASM di iPad/Safari -->
+    <script src="https://unpkg.com/meshoptimizer@0.18.1/meshopt_simplifier.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
@@ -206,7 +209,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* --- PROGRESS BAR STYLES --- */
         .progress-container {
             width: 100%; height: 4px; background: rgba(0, 0, 0, 0.5);
             border-radius: 2px; overflow: hidden; display: none;
@@ -218,7 +220,6 @@
             transition: width 2.5s cubic-bezier(0.1, 0.8, 0.2, 1);
         }
 
-        /* --- AR MODAL OVERLAY STYLES --- */
         #ar-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.85); z-index: 100; backdrop-filter: blur(15px);
@@ -361,33 +362,19 @@
 
     <div id="canvas-container"></div>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
-                "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
-                "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
-                "meshoptimizer": "https://cdn.jsdelivr.net/npm/meshoptimizer@0.21.0/meshopt_simplifier.module.js"
-            }
-        }
-    </script>
-
     <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { TransformControls } from 'three/addons/controls/TransformControls.js';
-        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
-        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-        import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        import { TransformControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/TransformControls.js';
+        import { OBJLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+        import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+        import { OBJExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/OBJExporter.js';
+        import { GLTFExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/GLTFExporter.js';
 
-        import { WebIO } from '@gltf-transform/core';
-        import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
-        import { weld, quantize, dedup, prune, simplify } from '@gltf-transform/functions';
+        import { WebIO } from 'https://esm.sh/@gltf-transform/core@3.10.1';
+        import { KHRONOS_EXTENSIONS } from 'https://esm.sh/@gltf-transform/extensions@3.10.1';
+        import { weld, quantize, dedup, prune, simplify } from 'https://esm.sh/@gltf-transform/functions@3.10.1';
 
         const i18n = {
             id: {
@@ -405,7 +392,7 @@
                 exportLabel: "Ekspor (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Memproses Spatial Mesh...",
-                loadingSimplify: "Menyederhanakan",
+                loadingSimplify: "Mengamankan UV & Tekstur",
                 loadingExport: "Mengekspor Spatial Asset...",
                 loadingAR: "Menyiapkan AR...",
                 arHint: "Klik ikon AR di pojok kanan bawah kotak untuk menempatkan model di ruanganmu.",
@@ -429,7 +416,7 @@
                 exportLabel: "Export (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Processing Spatial Mesh...",
-                loadingSimplify: "Simplifying",
+                loadingSimplify: "Preserving UVs & Textures",
                 loadingExport: "Exporting Spatial Asset...",
                 loadingAR: "Preparing AR...",
                 arHint: "Click the AR icon at the bottom right of the box to view in your space.",
@@ -445,7 +432,6 @@
         let scene, camera, renderer, controls, transformControl, grid;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
-        const fallbackModifier = new SimplifyModifier();
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         let currentArUrl = null; 
@@ -669,9 +655,6 @@
             setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
         }
 
-        // =========================================================
-        // SAFE SIMPLIFICATION (DYNAMICAL IMPORT WITH FALLBACK)
-        // =========================================================
         async function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             const reductionPercent = parseInt(slider.value);
@@ -680,103 +663,78 @@
             showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
             
             setTimeout(async () => {
-                let successWithMeshopt = false;
-                
                 try {
-                    // Coba muat Meshoptimizer secara opsional (agar jika gagal tidak membuat crash)
-                    const meshoptModule = await import('meshoptimizer');
-                    const simplifier = meshoptModule.MeshoptSimplifier || meshoptModule.meshoptSimplifier;
+                    const simplifier = window.meshoptSimplifier;
                     
-                    if (simplifier) {
-                        if (simplifier.setWasmPath) {
-                            simplifier.setWasmPath('https://cdn.jsdelivr.net/npm/meshoptimizer@0.21.0/');
-                        }
-                        await simplifier.ready;
-                        
-                        const targetRatio = (100 - reductionPercent) / 100;
-                        const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
-                        const exporter = new GLTFExporter();
-                        
-                        exporter.parse(
-                            tempMesh, 
-                            async function(gltfBuffer) {
-                                try {
-                                    const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
-                                    const document = await io.readBinary(new Uint8Array(gltfBuffer));
-                                    
-                                    await document.transform(
-                                        weld({ tolerance: 0.0001 }), 
-                                        simplify({ simplifier: simplifier, ratio: targetRatio, error: 0.01 })
-                                    );
-                                    
-                                    const simplifiedBuffer = await io.writeBinary(document);
-                                    const blob = new Blob([simplifiedBuffer], { type: 'application/octet-stream' });
-                                    const url = URL.createObjectURL(blob);
-                                    
-                                    new GLTFLoader().load(url, (gltf) => {
-                                        let newGeo = null;
-                                        gltf.scene.traverse((c) => { if (c.isMesh && !newGeo) newGeo = c.geometry; });
-                                        
-                                        if (newGeo) {
-                                            currentMesh.geometry.dispose();
-                                            currentMesh.geometry = newGeo;
-                                            currentMesh.geometry.computeVertexNormals();
-                                            
-                                            isTextureOn = true;
-                                            textureBtn.classList.add('active-toggle');
-                                            currentMesh.material = loadedMaterial;
-                                            applyCurrentMaterialStates();
-                                            
-                                            updateStats(originalGeometry.attributes.position.count, newGeo.attributes.position.count);
-                                            successWithMeshopt = true;
-                                        }
-                                        URL.revokeObjectURL(url);
-                                        hideLoading();
-                                    });
-                                } catch(err) {
-                                    console.warn("Meshoptimizer gagal, beralih ke modifier bawaan:", err);
-                                    runFallbackSimplify();
-                                }
-                            },
-                            function(err) { console.error(err); runFallbackSimplify(); },
-                            { binary: true }
-                        );
-                        return;
+                    if (!simplifier) {
+                        throw new Error("Skrip kompresor belum dimuat sepenuhnya. Pastikan internet menyala.");
                     }
-                } catch (e) {
-                    console.warn("Meshoptimizer WASM tidak tersedia, menggunakan fallback bawaan:", e);
-                }
 
-                if (!successWithMeshopt) {
-                    runFallbackSimplify();
+                    await simplifier.ready;
+                    
+                    const targetRatio = (100 - reductionPercent) / 100;
+                    const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
+                    const exporter = new GLTFExporter();
+                    
+                    exporter.parse(
+                        tempMesh, 
+                        async function(gltfBuffer) {
+                            try {
+                                const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
+                                const document = await io.readBinary(new Uint8Array(gltfBuffer));
+                                
+                                // PENTING: Toleransi error diubah dari 0.01 (1%) menjadi 0.1 (10%) agar bisa memotong lebih sadis
+                                await document.transform(
+                                    weld({ tolerance: 0.0001 }), 
+                                    simplify({ simplifier: simplifier, ratio: targetRatio, error: 0.1 })
+                                );
+                                
+                                const simplifiedBuffer = await io.writeBinary(document);
+                                const blob = new Blob([simplifiedBuffer], { type: 'application/octet-stream' });
+                                const url = URL.createObjectURL(blob);
+                                
+                                new GLTFLoader().load(url, (gltf) => {
+                                    let newGeo = null;
+                                    gltf.scene.traverse((c) => { if (c.isMesh && !newGeo) newGeo = c.geometry; });
+                                    
+                                    if (newGeo) {
+                                        currentMesh.geometry.dispose();
+                                        currentMesh.geometry = newGeo;
+                                        currentMesh.geometry.computeVertexNormals();
+                                        
+                                        isTextureOn = true;
+                                        textureBtn.classList.add('active-toggle');
+                                        currentMesh.material = loadedMaterial;
+                                        applyCurrentMaterialStates();
+                                        
+                                        updateStats(originalGeometry.attributes.position.count, newGeo.attributes.position.count);
+                                    }
+                                    URL.revokeObjectURL(url);
+                                    hideLoading();
+                                }, undefined, (err) => {
+                                    console.error(err);
+                                    alert("Gagal merender hasil: " + err.message);
+                                    hideLoading();
+                                });
+                            } catch(err) {
+                                console.error(err);
+                                alert("Gagal memproses Meshoptimizer: " + err.message);
+                                hideLoading();
+                            }
+                        },
+                        function(err) { 
+                            console.error(err); 
+                            alert("Gagal mengekspor buffer sementara: " + err.message);
+                            hideLoading(); 
+                        },
+                        { binary: true }
+                    );
+                } catch (err) {
+                    console.error("Fatal Error:", err);
+                    alert("TERJADI KESALAHAN: " + err.message);
+                    hideLoading();
                 }
             }, 50);
-        }
-
-        function runFallbackSimplify() {
-            try {
-                const origVertCount = originalGeometry.attributes.position.count;
-                const reductionPercent = parseInt(slider.value);
-                const targetCount = Math.max(4, Math.floor(origVertCount * ((100 - reductionPercent) / 100)));
-                
-                const simplifiedGeo = fallbackModifier.modify(originalGeometry, targetCount);
-                currentMesh.geometry.dispose(); 
-                currentMesh.geometry = simplifiedGeo; 
-                currentMesh.geometry.computeVertexNormals();
-
-                if (!simplifiedGeo.attributes.uv) {
-                    currentMesh.material = defaultMaterial;
-                    isTextureOn = false;
-                    textureBtn.classList.remove('active-toggle');
-                }
-                applyCurrentMaterialStates();
-                updateStats(origVertCount, simplifiedGeo.attributes.position.count);
-            } catch (err) {
-                console.error("Simplification error:", err);
-                alert(i18n[currentLang].alertError);
-            } finally {
-                hideLoading();
-            }
         }
 
         function resetToOriginal() {
