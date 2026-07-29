@@ -344,7 +344,8 @@
 
         let currentLang = 'en';
 
-        let scene, camera, renderer, controls, transformControl;
+        // Menambahkan grid ke variabel global agar bisa di-toggle
+        let scene, camera, renderer, controls, transformControl, grid;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
         const modifier = new SimplifyModifier();
@@ -409,10 +410,14 @@
             controls = new OrbitControls(camera, renderer.domElement); 
             controls.enableDamping = true; controls.dampingFactor = 0.05;
 
-            // Memperbesar Gizmo (panah transformasi) agar mudah ditap di HP/Tablet
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.setSize(1.5); 
             
+            // --- FITUR SNAPPING ---
+            transformControl.setTranslationSnap(0.1); 
+            transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); // Mengunci rotasi per 5 derajat
+            transformControl.setScaleSnap(0.1);
+
             transformControl.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
                 if (event.value && currentMesh) { 
@@ -435,11 +440,13 @@
             rimLight.position.set(-5, 4, -5);
             scene.add(rimLight);
             
-            // Mempertebal Floor Grid dari 0.03 menjadi 0.15 agar tidak hilang di mode Cinematic
-            const grid = new THREE.GridHelper(30, 60, 0xffffff, 0xffffff); 
+            // --- SETUP GRID ---
+            grid = new THREE.GridHelper(30, 60, 0xffffff, 0xffffff); 
             grid.material.opacity = 0.15; 
             grid.material.transparent = true;
-            grid.position.y = -1.2; scene.add(grid);
+            grid.position.y = -1.2; 
+            grid.visible = false; // Grid disembunyikan secara default (karena mode View)
+            scene.add(grid);
 
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
         }
@@ -536,10 +543,30 @@
             slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             undoBtn.addEventListener('click', performUndo); window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
 
-            toolView.addEventListener('click', () => { resetToolButtons(); toolView.classList.add('active-tool'); transformControl.detach(); });
-            toolMove.addEventListener('click', () => { resetToolButtons(); toolMove.classList.add('active-tool'); transformControl.setMode('translate'); if (currentMesh) transformControl.attach(currentMesh); });
-            toolRotate.addEventListener('click', () => { resetToolButtons(); toolRotate.classList.add('active-tool'); transformControl.setMode('rotate'); if (currentMesh) transformControl.attach(currentMesh); });
-            toolScale.addEventListener('click', () => { resetToolButtons(); toolScale.classList.add('active-tool'); transformControl.setMode('scale'); if (currentMesh) transformControl.attach(currentMesh); });
+            // LOGIKA VISIBILITAS GRID SAAT GANTI TOOL
+            toolView.addEventListener('click', () => { 
+                resetToolButtons(); toolView.classList.add('active-tool'); 
+                transformControl.detach(); 
+                if (grid) grid.visible = false; // Grid Hilang
+            });
+            toolMove.addEventListener('click', () => { 
+                resetToolButtons(); toolMove.classList.add('active-tool'); 
+                transformControl.setMode('translate'); 
+                if (currentMesh) transformControl.attach(currentMesh); 
+                if (grid) grid.visible = true; // Grid Muncul
+            });
+            toolRotate.addEventListener('click', () => { 
+                resetToolButtons(); toolRotate.classList.add('active-tool'); 
+                transformControl.setMode('rotate'); 
+                if (currentMesh) transformControl.attach(currentMesh); 
+                if (grid) grid.visible = true; // Grid Muncul
+            });
+            toolScale.addEventListener('click', () => { 
+                resetToolButtons(); toolScale.classList.add('active-tool'); 
+                transformControl.setMode('scale'); 
+                if (currentMesh) transformControl.attach(currentMesh); 
+                if (grid) grid.visible = true; // Grid Muncul
+            });
 
             textureBtn.addEventListener('click', () => {
                 if (!currentMesh) return; 
