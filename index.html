@@ -363,14 +363,15 @@
     <div id="canvas-container"></div>
 
     <script type="module">
-        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-        import { TransformControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/TransformControls.js';
-        import { OBJLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
-        import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-        import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
-        import { OBJExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/OBJExporter.js';
-        import { GLTFExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/GLTFExporter.js';
+        // MENGGUNAKAN ESM.SH SEBAGAI PENGGANTI IMPORTMAP AGAR SUPPORT NITROIDE/WEB IDE LAINNYA
+        import * as THREE from 'https://esm.sh/three@0.160.0';
+        import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        import { TransformControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/TransformControls.js';
+        import { OBJLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+        import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+        import { OBJExporter } from 'https://esm.sh/three@0.160.0/examples/jsm/exporters/OBJExporter.js';
+        import { GLTFExporter } from 'https://esm.sh/three@0.160.0/examples/jsm/exporters/GLTFExporter.js';
 
         import { WebIO } from 'https://esm.sh/@gltf-transform/core@3.10.1';
         import { KHRONOS_EXTENSIONS } from 'https://esm.sh/@gltf-transform/extensions@3.10.1';
@@ -683,9 +684,9 @@
                                 const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                                 const document = await io.readBinary(new Uint8Array(gltfBuffer));
                                 
-                                // PENTING: Toleransi error diubah dari 0.01 (1%) menjadi 0.1 (10%) agar bisa memotong lebih sadis
                                 await document.transform(
                                     weld({ tolerance: 0.0001 }), 
+                                    // Toleransi error ditingkatkan ke 0.1 (10%)
                                     simplify({ simplifier: simplifier, ratio: targetRatio, error: 0.1 })
                                 );
                                 
