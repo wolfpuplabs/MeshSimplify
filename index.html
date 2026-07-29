@@ -51,12 +51,11 @@
             overflow: hidden; background-color: #050507; color: var(--text-main); touch-action: none; 
             height: 100vh; height: 100dvh; width: 100vw;
             
-            /* FIX: Mencegah layar terblok biru (text selection) saat ditap berkali-kali */
-            -webkit-user-select: none; /* Khusus Safari/iOS */
+            -webkit-user-select: none; 
             -moz-user-select: none;
             -ms-user-select: none;
             user-select: none;
-            -webkit-touch-callout: none; /* Mencegah menu pop-up panjang di iOS */
+            -webkit-touch-callout: none; 
         }
         
         body::after {
@@ -185,7 +184,12 @@
         .stats-row { display: flex; justify-content: space-between; color: var(--text-muted); }
         .stats-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--text-main); }
         .stats-val.highlight { color: var(--accent-text); text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+        .stats-val.success-highlight { color: var(--success-text); text-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
         
+        .stats-divider {
+            margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);
+        }
+
         #loading-overlay {
             position: absolute; top: 24px; right: 24px; 
             background: var(--glass-bg); backdrop-filter: blur(20px);
@@ -319,7 +323,12 @@
                 <div class="stats-box">
                     <div class="stats-row"><span data-i18n="origGeo">Original Geometry</span><span class="stats-val" id="origVerts">0</span></div>
                     <div class="stats-row"><span data-i18n="currGeo">Current Geometry</span><span class="stats-val" id="currVerts">0</span></div>
-                    <div class="stats-row"><span data-i18n="reduction">Reduction</span><span class="stats-val highlight" id="reducedPct">0%</span></div>
+                    
+                    <!-- NEW STATS: FILE SIZE -->
+                    <div class="stats-row stats-divider"><span data-i18n="origSize">Original Size</span><span class="stats-val" id="origSizeDisplay">0 B</span></div>
+                    <div class="stats-row"><span data-i18n="currSize">Est. GLB Size</span><span class="stats-val success-highlight" id="currSizeDisplay">0 B</span></div>
+
+                    <div class="stats-row stats-divider"><span data-i18n="reduction">Reduction</span><span class="stats-val highlight" id="reducedPct">0%</span></div>
                 </div>
                 
                 <label style="margin-top: 16px; margin-bottom: 4px;" data-i18n="exportLabel">Export (Web-Optimized)</label>
@@ -373,6 +382,7 @@
                 targetPoly: "Target Poligon", applyBtn: "Terapkan Reduksi", resetMesh: "Reset Mesh",
                 viewMode: "Mode Tampilan", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
                 origGeo: "Geometri Asli", currGeo: "Geometri Saat Ini", reduction: "Reduksi",
+                origSize: "Ukuran File Asli", currSize: "Estimasi Hasil GLB",
                 exportLabel: "Ekspor (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Memproses Spatial Mesh...",
@@ -396,6 +406,7 @@
                 targetPoly: "Target Polygons", applyBtn: "Apply Reduction", resetMesh: "Reset Mesh",
                 viewMode: "View Mode", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
                 origGeo: "Original Geometry", currGeo: "Current Geometry", reduction: "Reduction",
+                origSize: "Original File Size", currSize: "Est. GLB Size",
                 exportLabel: "Export (Web-Optimized)",
                 arBtn: "AR Preview",
                 loadingMesh: "Processing Spatial Mesh...",
@@ -421,6 +432,8 @@
         let currentArUrl = null; 
         let isSnapEnabled = true; 
         
+        let origFileSizeValue = 0; // Menyimpan ukuran asli dalam bytes
+
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide
         });
@@ -464,6 +477,16 @@
             });
             updateUndoUI();
         });
+
+        // Helper Konversi Bytes ke Format KB/MB
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
 
         function init() {
             const container = document.getElementById('canvas-container');
@@ -581,7 +604,20 @@
                     transformControl.detach();
                 }
                 
-                applyCurrentMaterialStates(); updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count); hideLoading();
+                applyCurrentMaterialStates(); 
+                
+                // Menghitung ukuran size jika belum ada (e.g. sample model)
+                if (origFileSizeValue === 0) {
+                    const tempMesh = new THREE.Mesh(geometry, loadedMaterial || defaultMaterial);
+                    new GLTFExporter().parse(tempMesh, (buf) => {
+                        origFileSizeValue = buf.byteLength;
+                        updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
+                    }, null, { binary: true });
+                } else {
+                    updateStats(originalGeometry.attributes.position.count, originalGeometry.attributes.position.count);
+                }
+                
+                hideLoading();
             }, 50);
         }
 
@@ -593,7 +629,10 @@
             if (Array.isArray(currentMesh.material)) currentMesh.material.forEach(applyState); else applyState(currentMesh.material);
         }
 
-        function loadDemoMesh() { setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); }
+        function loadDemoMesh() { 
+            origFileSizeValue = 0; // reset untuk hitung ulang di setMesh
+            setMesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 32), defaultMaterial); 
+        }
 
         function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
@@ -671,6 +710,10 @@
 
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0]; if (!file) return; 
+                
+                // Ambil ukuran file asli yg diupload
+                origFileSizeValue = file.size;
+                
                 showLoading(`${i18n[currentLang].loadingMesh}`);
                 const fileURL = URL.createObjectURL(file);
                 const extractAndSetMesh = (object) => {
@@ -781,6 +824,25 @@
             document.getElementById('currVerts').textContent = currCount.toLocaleString();
             const pct = origCount > 0 ? Math.round(((origCount - currCount) / origCount) * 100) : 0;
             document.getElementById('reducedPct').textContent = `${pct}%`;
+
+            // Update statistik File Size
+            document.getElementById('origSizeDisplay').textContent = formatBytes(origFileSizeValue);
+            document.getElementById('currSizeDisplay').textContent = "...";
+            
+            if (currentMesh) {
+                // Ekspor ke GLB mentah di latar untuk menaksir estimasi file
+                const exporter = new GLTFExporter();
+                const tempMesh = new THREE.Mesh(currentMesh.geometry, loadedMaterial || defaultMaterial);
+                
+                exporter.parse(tempMesh, function(buffer) {
+                    let size = buffer.byteLength;
+                    document.getElementById('currSizeDisplay').textContent = formatBytes(size);
+                }, function() {
+                    document.getElementById('currSizeDisplay').textContent = "Error";
+                }, { binary: true });
+            } else {
+                document.getElementById('currSizeDisplay').textContent = "0 B";
+            }
         }
 
         function showLoading(text) { loadingText.textContent = text; loadingOverlay.style.display = 'flex'; }
