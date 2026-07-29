@@ -32,7 +32,12 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
-        body { overflow: hidden; background-color: #050507; color: var(--text-main); touch-action: none; }
+        
+        /* Fallback ke vh jika dvh belum didukung browser lawas */
+        body { 
+            overflow: hidden; background-color: #050507; color: var(--text-main); touch-action: none; 
+            height: 100vh; height: 100dvh; width: 100vw;
+        }
         
         body::after {
             content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
@@ -40,7 +45,7 @@
             pointer-events: none; z-index: 1;
         }
 
-        #canvas-container { width: 100vw; height: 100vh; position: absolute; z-index: 0; }
+        #canvas-container { width: 100vw; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
         
         #ui-panel {
             position: absolute; top: 24px; left: 24px; width: 360px;
@@ -50,7 +55,12 @@
             border: 1px solid var(--glass-border);
             border-radius: 28px;
             box-shadow: var(--glass-shadow), var(--glass-highlight);
-            z-index: 10; display: flex; flex-direction: column; max-height: calc(100vh - 48px);
+            z-index: 10; display: flex; flex-direction: column; 
+            
+            /* FIX: Menggunakan 100dvh agar tidak menabrak batas layar iPad/Safari */
+            max-height: calc(100vh - 48px);
+            max-height: calc(100dvh - 48px);
+            
             transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         
@@ -69,7 +79,11 @@
         }
         .icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; transform: scale(1.05); }
 
-        #ui-content { padding: 0 24px 24px 24px; overflow-y: auto; flex: 1; }
+        /* FIX: Tambah min-height 0 dan padding extra di bawah */
+        #ui-content { 
+            padding: 0 24px 32px 24px; /* Padding bawah lebih besar */
+            overflow-y: auto; flex: 1; min-height: 0; 
+        }
         
         #ui-content::-webkit-scrollbar { width: 4px; }
         #ui-content::-webkit-scrollbar-track { background: transparent; }
@@ -159,10 +173,12 @@
         @media (max-width: 768px) {
             #ui-panel {
                 top: auto; bottom: 16px; left: 16px; width: calc(100vw - 32px); 
-                max-height: 55vh; border-radius: 32px;
+                /* FIX Mobile: gunakan dvh juga */
+                max-height: 60vh; max-height: 60dvh; 
+                border-radius: 32px;
             }
             .panel-header { padding: 20px 20px 10px 20px; }
-            #ui-content { padding: 0 20px 20px 20px; }
+            #ui-content { padding: 0 20px 24px 20px; }
             .btn-group-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
             #loading-overlay { top: 24px; right: 50%; transform: translateX(50%); }
         }
@@ -452,7 +468,7 @@
                 const activeMat = isTextureOn ? loadedMaterial : defaultMaterial;
                 currentMesh = new THREE.Mesh(geometry, activeMat); currentMesh.scale.set(scale, scale, scale); scene.add(currentMesh);
                 
-                // FIX GIZMO BUG: Hanya tempelkan gizmo jika TIDAK berada di mode View
+                // Gizmo tidak dimunculkan jika tools ada di mode "View"
                 if (!toolView.classList.contains('active-tool')) {
                     transformControl.attach(currentMesh);
                 } else {
