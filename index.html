@@ -225,7 +225,7 @@
             <div class="section">
                 <div class="header-group">
                     <label style="margin: 0;" data-i18n="manipulation">Spatial Manipulation</label>
-                    <button id="undoBtn" disabled data-i18n="undo">↩ Undo</button>
+                    <button id="undoBtn" disabled data-i18n="undo">Undo</button>
                 </div>
                 <div class="btn-group-4">
                     <button id="toolView" class="active-tool" title="Orbit Camera" data-i18n="view">View</button>
@@ -265,8 +265,8 @@
                 
                 <label style="margin-top: 16px; margin-bottom: 4px;" data-i18n="exportLabel">Export (Web-Optimized)</label>
                 <div class="btn-group">
-                    <button id="exportObjBtn">💾 .OBJ</button>
-                    <button id="exportGlbBtn" class="success">📦 .GLB</button>
+                    <button id="exportObjBtn">.OBJ</button>
+                    <button id="exportGlbBtn" class="success">.GLB</button>
                 </div>
             </div>
         </div>
@@ -307,7 +307,7 @@
                 importText: "Import Model 3D (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Manipulasi Ruang",
-                undo: "↩ Undo",
+                undo: "Undo",
                 view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
                 targetPoly: "Target Poligon", applyBtn: "Terapkan Reduksi", resetMesh: "Reset Mesh",
                 viewMode: "Mode Tampilan", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
@@ -326,7 +326,7 @@
                 importText: "Import 3D Model (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Spatial Manipulation",
-                undo: "↩ Undo",
+                undo: "Undo",
                 view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
                 targetPoly: "Target Polygons", applyBtn: "Apply Reduction", resetMesh: "Reset Mesh",
                 viewMode: "View Mode", material: "Material", wireframe: "Wireframe", smooth: "Smooth",
@@ -344,7 +344,6 @@
 
         let currentLang = 'en';
 
-        // Menambahkan grid ke variabel global agar bisa di-toggle
         let scene, camera, renderer, controls, transformControl, grid;
         let currentMesh = null; let originalGeometry = null; 
         let loadedMaterial = null; let isTextureOn = true;    
@@ -413,9 +412,8 @@
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.setSize(1.5); 
             
-            // --- FITUR SNAPPING ---
             transformControl.setTranslationSnap(0.1); 
-            transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); // Mengunci rotasi per 5 derajat
+            transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); 
             transformControl.setScaleSnap(0.1);
 
             transformControl.addEventListener('dragging-changed', function (event) {
@@ -440,12 +438,11 @@
             rimLight.position.set(-5, 4, -5);
             scene.add(rimLight);
             
-            // --- SETUP GRID ---
             grid = new THREE.GridHelper(30, 60, 0xffffff, 0xffffff); 
             grid.material.opacity = 0.15; 
             grid.material.transparent = true;
             grid.position.y = -1.2; 
-            grid.visible = false; // Grid disembunyikan secara default (karena mode View)
+            grid.visible = false; 
             scene.add(grid);
 
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
@@ -474,7 +471,7 @@
 
         function updateUndoUI() { 
             undoBtn.disabled = historyStack.length === 0; 
-            undoBtn.innerText = historyStack.length > 0 ? `↩ Undo (${historyStack.length})` : i18n[currentLang].undo;
+            undoBtn.innerText = historyStack.length > 0 ? `Undo (${historyStack.length})` : i18n[currentLang].undo;
         }
         
         function clearHistory() { historyStack.forEach(state => { if (state.type === 'mesh') state.geometry.dispose(); }); historyStack.length = 0; updateUndoUI(); }
@@ -543,29 +540,28 @@
             slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             undoBtn.addEventListener('click', performUndo); window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
 
-            // LOGIKA VISIBILITAS GRID SAAT GANTI TOOL
             toolView.addEventListener('click', () => { 
                 resetToolButtons(); toolView.classList.add('active-tool'); 
                 transformControl.detach(); 
-                if (grid) grid.visible = false; // Grid Hilang
+                if (grid) grid.visible = false; 
             });
             toolMove.addEventListener('click', () => { 
                 resetToolButtons(); toolMove.classList.add('active-tool'); 
                 transformControl.setMode('translate'); 
                 if (currentMesh) transformControl.attach(currentMesh); 
-                if (grid) grid.visible = true; // Grid Muncul
+                if (grid) grid.visible = true; 
             });
             toolRotate.addEventListener('click', () => { 
                 resetToolButtons(); toolRotate.classList.add('active-tool'); 
                 transformControl.setMode('rotate'); 
                 if (currentMesh) transformControl.attach(currentMesh); 
-                if (grid) grid.visible = true; // Grid Muncul
+                if (grid) grid.visible = true; 
             });
             toolScale.addEventListener('click', () => { 
                 resetToolButtons(); toolScale.classList.add('active-tool'); 
                 transformControl.setMode('scale'); 
                 if (currentMesh) transformControl.attach(currentMesh); 
-                if (grid) grid.visible = true; // Grid Muncul
+                if (grid) grid.visible = true; 
             });
 
             textureBtn.addEventListener('click', () => {
