@@ -45,6 +45,13 @@
         body { 
             overflow: hidden; background-color: #050507; color: var(--text-main); touch-action: none; 
             height: 100vh; height: 100dvh; width: 100vw;
+            
+            /* FIX: Mencegah layar terblok biru (text selection) saat ditap berkali-kali */
+            -webkit-user-select: none; /* Khusus Safari/iOS */
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none; /* Mencegah menu pop-up panjang di iOS */
         }
         
         body::after {
@@ -269,7 +276,6 @@
             <div class="section">
                 <div class="header-group">
                     <label style="margin: 0;" data-i18n="manipulation">Spatial Manipulation</label>
-                    <!-- Ditambahkan div flex untuk menyusun Snap & Undo berjejeran -->
                     <div style="display: flex; gap: 6px;">
                         <button id="snapToggleBtn" class="small-action-btn active-toggle" data-i18n="snap">Snap</button>
                         <button id="undoBtn" class="small-action-btn" disabled data-i18n="undo">Undo</button>
@@ -356,7 +362,7 @@
                 importText: "Import Model 3D (.OBJ, .GLB, .FBX)",
                 loadDemo: "Load Sample Model",
                 manipulation: "Manipulasi Ruang",
-                snap: "Magnet", // Snap dalam bahasa indonesia yang lebih pas konteks ruang 3D
+                snap: "Magnet", 
                 undo: "Undo",
                 view: "View", move: "Move", rotate: "Rotate", scale: "Scale",
                 targetPoly: "Target Poligon", applyBtn: "Terapkan Reduksi", resetMesh: "Reset Mesh",
@@ -408,7 +414,7 @@
 
         const historyStack = []; const MAX_HISTORY = 10; let initialTransformState = null;
         let currentArUrl = null; 
-        let isSnapEnabled = true; // Status Snap default nyala
+        let isSnapEnabled = true; 
         
         const defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x88ccff, wireframe: false, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide
@@ -477,7 +483,6 @@
             transformControl = new TransformControls(camera, renderer.domElement);
             transformControl.setSize(1.5); 
             
-            // Atur Snap awal
             updateSnapSettings();
 
             transformControl.addEventListener('dragging-changed', function (event) {
@@ -512,14 +517,12 @@
             loadDemoMesh(); window.addEventListener('resize', onWindowResize); setupUIEventListeners(); animate();
         }
 
-        // Fungsi memperbarui status Snap pada Three.js TransformControl
         function updateSnapSettings() {
             if (isSnapEnabled) {
                 transformControl.setTranslationSnap(0.1); 
                 transformControl.setRotationSnap(THREE.MathUtils.degToRad(5)); 
                 transformControl.setScaleSnap(0.1);
             } else {
-                // Mematikan snap dengan memberikannya null
                 transformControl.setTranslationSnap(null); 
                 transformControl.setRotationSnap(null); 
                 transformControl.setScaleSnap(null);
@@ -618,7 +621,6 @@
             slider.addEventListener('change', applySimplification); applyBtn.addEventListener('click', applySimplification); resetMeshBtn.addEventListener('click', resetToOriginal);
             undoBtn.addEventListener('click', performUndo); window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'z') performUndo(); });
 
-            // Toggle fitur Snap
             snapToggleBtn.addEventListener('click', () => {
                 isSnapEnabled = !isSnapEnabled;
                 snapToggleBtn.classList.toggle('active-toggle', isSnapEnabled);
