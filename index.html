@@ -369,7 +369,7 @@
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
                 "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
-                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.32.0/meshopt_simplifier.module.js"
+                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.21.0/meshopt_simplifier.module.js"
             }
         }
     </script>
@@ -384,8 +384,8 @@
         import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
         import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
         
-        // PENTING: Kita tidak lagi menggunakan SimplifyModifier Three.js!
-        import { MeshoptSimplifier } from 'meshoptimizer';
+        // PERBAIKAN FATAL ERROR: Versi dan nama variabel import sudah dikoreksi
+        import { meshoptSimplifier } from 'meshoptimizer';
         
         import { WebIO } from '@gltf-transform/core';
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
@@ -681,12 +681,12 @@
             showLoading(`${i18n[currentLang].loadingSimplify} (${reductionPercent}%)...`, true);
             
             try {
-                // 1. Tunggu Meshoptimizer siap
-                await MeshoptSimplifier.ready;
+                // Tunggu Wasm Meshoptimizer siap memproses
+                await meshoptSimplifier.ready;
                 
                 const targetRatio = (100 - reductionPercent) / 100;
                 
-                // 2. Bungkus original mesh ke dalam format ekspor
+                // Gunakan GLTFExporter untuk membungkus mesh asli untuk dikirim ke gltf-transform
                 const tempMesh = new THREE.Mesh(originalGeometry, loadedMaterial || defaultMaterial);
                 const exporter = new GLTFExporter();
                 
@@ -697,15 +697,14 @@
                             const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                             const document = await io.readBinary(new Uint8Array(gltfBuffer));
                             
-                            // 3. Aplikasikan meshoptimizer yang akan menyimpan UV Map dengan aman
+                            // Eksekusi meshoptimizer untuk memotong poligon secara cerdas (UV MAP AMAN!)
                             await document.transform(
-                                weld({ tolerance: 0.0001 }), // Rapikan titik untuk hasil lebih mulus
-                                simplify({ simplifier: MeshoptSimplifier, ratio: targetRatio, error: 0.01 })
+                                weld({ tolerance: 0.0001 }), 
+                                simplify({ simplifier: meshoptSimplifier, ratio: targetRatio, error: 0.01 })
                             );
                             
                             const simplifiedBuffer = await io.writeBinary(document);
                             
-                            // 4. Ubah kembali hasil dari memory menjadi Object Three.js
                             const blob = new Blob([simplifiedBuffer], { type: 'application/octet-stream' });
                             const url = URL.createObjectURL(blob);
                             
@@ -718,7 +717,6 @@
                                     currentMesh.geometry = newGeo;
                                     currentMesh.geometry.computeVertexNormals();
                                     
-                                    // PENTING: Tekstur sekarang dipastikan utuh dan aman
                                     isTextureOn = true;
                                     textureBtn.classList.add('active-toggle');
                                     currentMesh.material = loadedMaterial;
@@ -736,7 +734,7 @@
                         }
                     },
                     function(err) { console.error(err); hideLoading(); },
-                    { binary: true } // Ekspor ke format biner untuk diproses
+                    { binary: true } 
                 );
             } catch (err) { 
                 console.error(err); alert(i18n[currentLang].alertError); hideLoading(); 
@@ -934,7 +932,7 @@
                 const tempMesh = new THREE.Mesh(currentMesh.geometry, loadedMaterial || defaultMaterial);
                 
                 exporter.parse(tempMesh, function(buffer) {
-                    let size = buffer.byteLength * 0.45; // Mengalikan estimasi ukuran seperti yang dibahas sebelumnya
+                    let size = buffer.byteLength * 0.45; 
                     document.getElementById('currSizeDisplay').textContent = formatBytes(size);
                 }, function() {
                     document.getElementById('currSizeDisplay').textContent = "Error";
