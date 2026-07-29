@@ -360,7 +360,7 @@
 
     <div id="canvas-container"></div>
 
-    <!-- PENTING: Kembali menggunakan Import Map Resmi untuk Vercel -->
+    <!-- PENTING: Import Map Resmi. Versi meshoptimizer telah disetel dengan akurat ke 0.21.0 -->
     <script type="importmap">
         {
             "imports": {
@@ -369,7 +369,7 @@
                 "@gltf-transform/core": "https://esm.sh/@gltf-transform/core@3.10.1",
                 "@gltf-transform/extensions": "https://esm.sh/@gltf-transform/extensions@3.10.1",
                 "@gltf-transform/functions": "https://esm.sh/@gltf-transform/functions@3.10.1",
-                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.32.0/meshopt_simplifier.module.js"
+                "meshoptimizer": "https://unpkg.com/meshoptimizer@0.21.0/meshopt_simplifier.module.js"
             }
         }
     </script>
@@ -388,7 +388,6 @@
         import { KHRONOS_EXTENSIONS } from '@gltf-transform/extensions';
         import { weld, quantize, dedup, prune, simplify } from '@gltf-transform/functions';
         
-        // Memuat MeshOptimizer dengan syntax import resmi standard ESM
         import { meshoptSimplifier } from 'meshoptimizer';
 
         const i18n = {
@@ -673,10 +672,7 @@
         async function applySimplification() {
             if (!originalGeometry || !currentMesh) return;
             
-            // MATH FIX: Jika slider "Target Polygons" bernilai 20, artinya pengguna ingin "Menyisakan 20%".
-            // Jadi rasionya murni = 20 / 100 = 0.2 (BUKAN 0.8 seperti sebelumnya).
             const targetRatio = parseInt(slider.value) / 100;
-            
             saveToHistory({ type: 'mesh', geometry: currentMesh.geometry.clone() });
             
             showLoading(`${i18n[currentLang].loadingSimplify} (${slider.value}%)...`, true);
@@ -695,8 +691,6 @@
                                 const io = new WebIO().registerExtensions(KHRONOS_EXTENSIONS);
                                 const document = await io.readBinary(new Uint8Array(gltfBuffer));
                                 
-                                // Ditambahkan dedup() & prune() agar pembersihan optimal
-                                // Toleransi 'error' dilonggarkan sangat jauh (0.25) agar agresif memotong model organik (seperti wajah/karakter)
                                 await document.transform(
                                     weld({ tolerance: 0.0001 }), 
                                     dedup(),
